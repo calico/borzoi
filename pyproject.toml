@@ -1,0 +1,26 @@
+[build-system]
+requires = [
+    "setuptools>=45",
+    "wheel",
+    "setuptools_scm>=6.2"
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "calicolabs-$PYTHON_PACKAGE_NAME"
+authors = [
+    {name = "Calico Data Engineering Team", email = "calico-data-eng@calicolabs.com"}
+]
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = ["License :: OSI Approved :: MIT License"]
+dynamic = ["version", "description"]
+
+[project.optional-dependencies]
+dev = [
+    "black==22.3.0",
+    "pytest==7.1.2"
+]
+
+[tool.setuptools_scm]
+
