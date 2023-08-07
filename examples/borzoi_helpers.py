@@ -7,9 +7,9 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 
-import basenji
-from basenji import seqnn
-from basenji import dna_io
+import baskerville
+from baskerville import seqnn
+from baskerville import dna_io
 
 import pysam
 
