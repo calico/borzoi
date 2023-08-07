@@ -18,19 +18,16 @@ from optparse import OptionParser
 import gc
 import json
 import pickle
-import pdb
 import os
 import time
 
 import numpy as np
 import pandas as pd
 import pyranges as pr
-from scipy.stats import pearsonr
 
-import pygene
-from basenji import dataset
-from basenji import seqnn
-from basenji_sad import untransform_preds1
+from baskerville import dataset
+from baskerville import seqnn
+from baskerville.gene import gtf_kv
 
 '''
 borzoi_test_exons.py
@@ -175,7 +172,7 @@ def main():
       chrm = a[0]
       start = int(a[3])
       end = int(a[4])
-      kv = pygene.gtf_kv(a[-1])
+      kv = gtf_kv(a[-1])
       gene_id = kv['gene_id']
       gene_strand[gene_id] = a[6]
       exon_id = '%s/%s' % (gene_id, kv['exonic_part_number'])
@@ -200,7 +197,7 @@ def main():
     # predict only if gene overlaps
     yh = None
     y = y.numpy()[...,targets_df.index]
-    y = untransform_preds1(y, targets_df, unscale=True)
+    y = dataset.untransform_preds1(y, targets_df, unscale=True)
 
     t0 = time.time()
     print('Sequence %d...' % si, end='')
@@ -233,7 +230,7 @@ def main():
         if yh is None:
           yh = seqnn_model(x)
           print(yh.max(), " untransformed to ", end='')
-          yh = untransform_preds1(yh, targets_df, unscale=True)
+          yh = dataset.untransform_preds1(yh, targets_df, unscale=True)
           print(yh.max())
 
         # slice gene region

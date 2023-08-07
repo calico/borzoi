@@ -13,11 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =========================================================================
-
 from optparse import OptionParser
 import gc
 import json
-import pdb
 import os
 import time
 
@@ -31,10 +29,8 @@ from scipy.stats import pearsonr
 from sklearn.metrics import explained_variance_score
 
 import pygene
-from basenji import dataset
-from basenji import seqnn
-from basenji_sad import untransform_preds1
-from borzoi_sed import targets_prep_strand
+from baskerville import dataset
+from baskerville import seqnn
 
 '''
 borzoi_test_genes.py
@@ -97,7 +93,7 @@ def main():
   targets_df = pd.read_csv(options.targets_file, index_col=0, sep='\t')
 
   # prep strand
-  targets_strand_df = targets_prep_strand(targets_df)
+  targets_strand_df = dataset.targets_prep_strand(targets_df)
   num_targets = targets_df.shape[0]
   num_targets_strand = targets_strand_df.shape[0]
 
@@ -250,8 +246,8 @@ def main():
       print(gene_id, gene_targets_gi.shape, gene_preds_gi.shape)
 
     # untransform
-    gene_preds_gi = untransform_preds1(gene_preds_gi, targets_strand_df)
-    gene_targets_gi = untransform_preds1(gene_targets_gi, targets_strand_df)
+    gene_preds_gi = dataset.untransform_preds1(gene_preds_gi, targets_strand_df)
+    gene_targets_gi = dataset.untransform_preds1(gene_targets_gi, targets_strand_df)
 
     # compute within gene correlation before dropping length axis
     gene_corr_gi = np.zeros(num_targets_strand)

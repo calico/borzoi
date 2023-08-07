@@ -13,31 +13,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =========================================================================
-
 from optparse import OptionParser
 import gc
 import json
-import pdb
 import os
 import time
 import sys
 
-import h5py
-#from intervaltree import IntervalTree
 import numpy as np
 import pandas as pd
 import pyranges as pr
-from scipy.stats import pearsonr
-from sklearn.metrics import explained_variance_score
-import tensorflow as tf
-#from tqdm import tqdm
 
-from basenji import bed
-from basenji import dataset
-from basenji import seqnn
-from basenji import trainer
-#import pygene
-#from qnorm import quantile_normalize
+from baskerville import dataset
+from baskerville import seqnn
 
 '''
 borzoi_test_apa_polaydb.py

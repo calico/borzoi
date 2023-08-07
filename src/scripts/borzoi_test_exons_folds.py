@@ -13,12 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =========================================================================
-from optparse import OptionParser, OptionGroup
+from optparse import OptionParser
 import glob
 import json
 import os
-import pdb
-import sys
 
 from natsort import natsorted
 import numpy as np
@@ -30,9 +28,9 @@ import seaborn as sns
 import slurm
 
 """
-basenji_test_exons_folds.py
+borzoi_test_exons_folds.py
 
-Test Basenji model replicates on alternative splicing via cassette exons,
+Test Borzoi model replicates on alternative splicing via cassette exons,
 given parameters and data.
 """
 
@@ -152,7 +150,7 @@ def main():
         # print('%s already generated.' % acc_file)
         pass
       else:
-        # basenji test
+        # evaluate
         cmd = '. /home/drk/anaconda3/etc/profile.d/conda.sh;'
         cmd += ' conda activate %s;' % options.conda_env
         cmd += ' time borzoi_test_exons.py'

@@ -13,25 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =========================================================================
-from optparse import OptionParser, OptionGroup
-import glob
+from optparse import OptionParser
 import json
 import os
-import pdb
-import sys
-
-from natsort import natsorted
-import numpy as np
-import pandas as pd
-from scipy.stats import wilcoxon, ttest_rel
-import matplotlib.pyplot as plt
-import seaborn as sns
 
 import slurm
 
 """
 borzoi_test_apa_folds_polaydb.py
-
 """
 
 ################################################################################
@@ -144,7 +133,7 @@ def main():
         # print('%s already generated.' % acc_file)
         pass
       else:
-        # basenji test
+        # evaluate
         cmd = '. /home/drk/anaconda3/etc/profile.d/conda.sh;'
         cmd += ' conda activate %s;' % options.conda_env
         cmd += ' time borzoi_test_apa_polaydb.py'

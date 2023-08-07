@@ -13,25 +13,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =========================================================================
-from optparse import OptionParser, OptionGroup
+from optparse import OptionParser
 import glob
 import json
 import os
-import pdb
-import sys
 
 from natsort import natsorted
 import numpy as np
+import matplotlib.pyplot as plt
 import pandas as pd
+from scipy.stats import ttest_rel, wilcoxon
+import seaborn as sns
 
 import slurm
-from basenji_test_folds import jointplot, stat_tests
-
 
 """
-basenji_test_folds.py
+borzoi_test_folds.py
 
-Train Basenji model replicates using given parameters and data.
+Train Borzoi model replicates using given parameters and data.
 """
 
 ################################################################################
@@ -155,7 +154,7 @@ def main():
         # print('%s already generated.' % acc_file)
         pass
       else:
-        # basenji test
+        # evaluate
         cmd = '. /home/drk/anaconda3/etc/profile.d/conda.sh;'
         cmd += ' conda activate %s;' % options.conda_env
         cmd += ' time borzoi_test_genes.py'
@@ -227,6 +226,30 @@ def main():
           options.label_ref, options.label_exp)
 
 
+def jointplot(ref_cors, exp_cors, out_pdf, label1, label2):
+  vmin = min(np.min(ref_cors), np.min(exp_cors))
+  vmax = max(np.max(ref_cors), np.max(exp_cors))
+  vspan = vmax - vmin
+  vbuf = vspan * 0.1
+  vmin -= vbuf
+  vmax += vbuf
+
+  g = sns.jointplot(ref_cors, exp_cors, space=0)
+
+  eps = 0.05
+  g.ax_joint.text(1-eps, eps, 'Mean: %.4f' % np.mean(ref_cors),
+    horizontalalignment='right', transform=g.ax_joint.transAxes)
+  g.ax_joint.text(eps, 1-eps, 'Mean: %.4f' % np.mean(exp_cors),
+    verticalalignment='top', transform=g.ax_joint.transAxes)
+
+  g.ax_joint.plot([vmin,vmax], [vmin,vmax], linestyle='--', color='orange')
+  g.ax_joint.set_xlabel(label1)
+  g.ax_joint.set_ylabel(label2)
+  
+  plt.tight_layout(w_pad=0, h_pad=0)
+  plt.savefig(out_pdf)
+  
+
 def read_metrics(acc_glob_str, metric='pearsonr'):
   rep_cors = []
   acc_files = natsorted(glob.glob(acc_glob_str))
@@ -237,6 +260,29 @@ def read_metrics(acc_glob_str, metric='pearsonr'):
   cors_stdm = np.std(rep_cors) / np.sqrt(len(rep_cors))
 
   return rep_cors, cors_mean, cors_stdm
+
+
+def stat_tests(ref_cors, exp_cors, alternative):
+  # hack for the common situtation where I have more reference
+  # crosses than experiment crosses
+  if len(ref_cors) == 2*len(exp_cors):
+    ref_cors = [ref_cors[i] for i in range(len(ref_cors)) if i % 2 == 0]
+
+  _, mwp = wilcoxon(exp_cors, ref_cors, alternative=alternative)
+  tt, tp = ttest_rel(exp_cors, ref_cors)
+
+  if alternative == 'less':
+    if tt <= 0:
+      tp /= 2
+    else:
+      tp = 1 - (1-tp)/2
+  elif alternative == 'greater':
+    if tt >= 0:
+      tp /= 2
+    else:
+      tp = 1 - (1-tp)/2
+
+  return mwp, tp
 
 
 ################################################################################

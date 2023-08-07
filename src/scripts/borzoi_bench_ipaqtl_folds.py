@@ -16,24 +16,16 @@
 from optparse import OptionParser, OptionGroup
 import glob
 import h5py
-import json
-import pdb
 import os
-import shutil
-import sys
 
 import numpy as np
-import pandas as pd
 
 import slurm
-#import util
-
-from basenji_test_folds import stat_tests
 
 """
 borzoi_bench_ipaqtl_folds.py
 
-Benchmark Basenji model replicates on GTEx ipaQTL classification task.
+Benchmark Borzoi model replicates on GTEx ipaQTL classification task.
 """
 
 ################################################################################
@@ -46,7 +38,7 @@ def main():
   # sed
   sed_options = OptionGroup(parser, 'borzoi_sed_ipaqtl_cov.py options')
   sed_options.add_option('-f', dest='genome_fasta',
-      default='%s/data/hg38.fa' % os.environ['BASENJIDIR'],
+      default='%s/assembly/ucsc/hg38.fa' % os.environ['HG38'],
       help='Genome FASTA for sequences [Default: %default]')
   sed_options.add_option('-g', dest='genes_gtf',
       default='%s/genes/gencode41/gencode41_basic_nort.gtf' % os.environ['HG38'],
@@ -80,7 +72,7 @@ def main():
   parser.add_option_group(sed_options)
 
   # classify
-  class_options = OptionGroup(parser, 'basenji_bench_classify.py options')
+  class_options = OptionGroup(parser, 'borzoi_bench_classify.py options')
   class_options.add_option('--msl', dest='msl',
       default=1, type='int',
       help='Random forest min_samples_leaf [Default: %default]')
@@ -257,7 +249,7 @@ def main():
   ################################################################
   # fit classifiers
 
-  cmd_base = 'basenji_bench_classify.py -i 100 -p 2 -r 44 -s --stat COVR'
+  cmd_base = 'westminster_classify.py -i 100 -p 2 -r 44 -s --stat COVR'
   cmd_base += ' --msl %d' % options.msl
 
   jobs = []

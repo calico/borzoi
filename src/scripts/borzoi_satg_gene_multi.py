@@ -13,14 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =========================================================================
-
 from optparse import OptionParser
 
-import glob
 import os
 import pickle
-import shutil
-import subprocess
 import sys
 
 import h5py
@@ -29,7 +25,7 @@ import numpy as np
 import slurm
 
 '''
-borzoi_satg_gene.py
+borzoi_satg_gene_multi.py
 
 Perform a gradient saliency analysis for genes specified in a GTF file.
 using multiple processes.
@@ -44,7 +40,7 @@ def main():
 
   # borzoi_satg_gene.py options
   parser.add_option('-f', dest='genome_fasta',
-      default='%s/data/hg38.fa' % os.environ['BASENJIDIR'],
+      default='%s/assembly/ucsc/hg38.fa' % os.environ['HG38'],
       help='Genome FASTA for sequences [Default: %default]')
   parser.add_option('-o', dest='out_dir',
       default='satg_out', help='Output directory [Default: %default]')
@@ -84,14 +80,6 @@ def main():
       default=False, action='store_true',
       help='Restart a partially completed job [Default: %default]')
   (options, args) = parser.parse_args()
-
-  if len(args) != 3:
-    print(args)
-    parser.error('Must provide parameters and model files and BED file')
-  else:
-    params_file = args[0]
-    model_file = args[1]
-    genes_gtf_file = args[2]
 
   #######################################################
   # prep work

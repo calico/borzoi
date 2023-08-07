@@ -19,15 +19,14 @@ import h5py
 import os
 
 import numpy as np
-import pandas as pd
 
 import slurm
 import util
 
 """
-basenji_bench_sqtl_folds.py
+borzoi_bench_sqtl_folds.py
 
-Benchmark Basenji model replicates on GTEx eQTL classification task.
+Benchmark Borzoi model replicates on GTEx sQTL classification task.
 """
 
 ################################################################################
@@ -40,7 +39,7 @@ def main():
   # sed
   sed_options = OptionGroup(parser, 'borzoi_sed.py options')
   sed_options.add_option('-f', dest='genome_fasta',
-      default='%s/data/hg38.fa' % os.environ['BASENJIDIR'],
+      default='%s/assembly/ucsc/hg38.fa' % os.environ['HG38'],
       help='Genome FASTA for sequences [Default: %default]')
   sed_options.add_option('-g', dest='genes_gtf',
       default='%s/genes/gencode41/gencode41_basic_nort_protein.gtf' % os.environ['HG38'],
@@ -69,7 +68,7 @@ def main():
   parser.add_option_group(sed_options)
 
   # classify
-  class_options = OptionGroup(parser, 'basenji_bench_classify.py options')
+  class_options = OptionGroup(parser, 'borzoi_bench_classify.py options')
   class_options.add_option('--msl', dest='msl',
       default=1, type='int',
       help='Random forest min_samples_leaf [Default: %default]')
@@ -254,7 +253,7 @@ def main():
     cmd_base = '. /home/drk/anaconda3/etc/profile.d/conda.sh;'
     cmd_base += ' conda activate %s;' % options.conda_env
     cmd_base += ' echo $HOSTNAME;'
-  cmd_base += ' basenji_bench_classify.py -i 100 -p 2 -r 44 -s --stat nDi'
+  cmd_base += ' westminster_classify.py -i 100 -p 2 -r 44 -s --stat nDi'
   cmd_base += ' --msl %d' % options.msl
 
   jobs = []

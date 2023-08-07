@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =========================================================================
-from __future__ import print_function
 from optparse import OptionParser
 import os
 import random
@@ -24,11 +23,10 @@ import json
 import numpy as np
 import pandas as pd
 import pysam
-import tensorflow as tf
 
-from basenji import dna_io
-from basenji import seqnn
-from basenji import stream
+from baskerville import dna_io
+from baskerville import seqnn
+from baskerville import stream
 
 '''
 borzoi_trip.py
@@ -46,7 +44,7 @@ def main():
   usage = 'usage: %prog [options] <params_file> <model_file> <promoter_file> <insertions_file>'
   parser = OptionParser(usage)
   parser.add_option('-f', dest='fasta',
-      default='%s/data/hg38.fa' % os.environ['BASENJIDIR'],
+      default='%s/assembly/ucsc/hg38.fa' % os.environ['HG38'],
       help='Genome FASTA for sequences [Default: %default]')
   parser.add_option('--site', dest='site',
       default=False, action='store_true',

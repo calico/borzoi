@@ -14,12 +14,9 @@
 # limitations under the License.
 # =========================================================================
 from optparse import OptionParser, OptionGroup
-import glob
 import h5py
-import pdb
 import os
 import subprocess
-import sys
 
 import numpy as np
 import pandas as pd
@@ -41,11 +38,11 @@ def main():
   parser = OptionParser(usage)
 
   # crispr
-  crispr_options = OptionGroup(parser, 'basenji_bench_crispr.py options')
+  crispr_options = OptionGroup(parser, 'borzoi_bench_crispr.py options')
   crispr_options.add_option('-b', dest='bench_dir',
       default='/home/drk/seqnn/data/crispr/flowfish')
   crispr_options.add_option('-f', dest='genome_fasta',
-      default='%s/data/hg38.fa' % os.environ['BASENJIDIR'],
+      default='%s/assembly/ucsc/hg38.fa' % os.environ['HG38'],
       help='Genome FASTA for sequences [Default: %default]')
   crispr_options.add_option('-o', dest='out_dir',
       default='flowfish', help='Output directory [Default: %default]')

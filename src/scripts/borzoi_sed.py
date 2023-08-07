@@ -13,16 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =========================================================================
-from __future__ import print_function
-
 from optparse import OptionParser
 from collections import OrderedDict
 import json
 import pickle
 import os
-import pdb
-import sys
-import time
 from tqdm import tqdm
 
 import h5py
@@ -31,13 +26,12 @@ import pandas as pd
 import pybedtools
 import pysam
 from scipy.special import rel_entr
-import tensorflow as tf
 
-from basenji import gene as bgene
-from basenji import seqnn
-from basenji import stream
-from basenji import vcf as bvcf
-from basenji_sad import untransform_preds, untransform_preds1
+from baskerville.gene import Transcriptome
+from baskerville import dataset
+from baskerville import seqnn
+from baskerville import vcf as bvcf
+
 '''
 borzoi_sed.py
 
@@ -55,7 +49,7 @@ def main():
       default=False, action='store_true',
       help='Write ref/alt predictions as bedgraph [Default: %default]')
   parser.add_option('-f', dest='genome_fasta',
-      default='%s/data/hg38.fa' % os.environ['BASENJIDIR'],
+      default='%s/assembly/ucsc/hg38.fa' % os.environ['HG38'],
       help='Genome FASTA for sequences [Default: %default]')
   parser.add_option('-g', dest='genes_gtf',
       default='%s/genes/gencode41/gencode41_basic_nort.gtf' % os.environ['HG38'],
@@ -150,7 +144,7 @@ def main():
     targets_df = pd.read_csv(options.targets_file, sep='\t', index_col=0)
 
   # prep strand
-  targets_strand_df = targets_prep_strand(targets_df)
+  targets_strand_df = dataset.targets_prep_strand(targets_df)
 
   # set strand pairs (using new indexing)
   orig_new_index = dict(zip(targets_df.index, np.arange(targets_df.shape[0])))
@@ -186,7 +180,7 @@ def main():
     snps = bvcf.vcf_snps(vcf_file)
 
   # read genes
-  transcriptome = bgene.Transcriptome(options.genes_gtf)
+  transcriptome = Transcriptome(options.genes_gtf)
   gene_strand = {}
   for gene_id, gene in transcriptome.genes.items():
     gene_strand[gene_id] = gene.strand
@@ -233,11 +227,11 @@ def main():
      # untransform predictions
     if options.targets_file is not None:
       if options.untransform_old:
-        ref_preds = untransform_preds1(ref_preds, targets_df)
-        alt_preds = untransform_preds1(alt_preds, targets_df)
+        ref_preds = dataset.untransform_preds1(ref_preds, targets_df)
+        alt_preds = dataset.untransform_preds1(alt_preds, targets_df)
       else:
-        ref_preds = untransform_preds(ref_preds, targets_df)
-        alt_preds = untransform_preds(alt_preds, targets_df)
+        ref_preds = dataset.untransform_preds(ref_preds, targets_df)
+        alt_preds = dataset.untransform_preds(alt_preds, targets_df)
 
     if options.bedgraph:
       write_bedgraph_snp(snps[si], ref_preds, alt_preds, options.out_dir, model_stride)
@@ -390,7 +384,7 @@ def map_snpseq_genes(
      Args:
         snps ([bvcf.SNP]): SNP list.
         seq_len (int): Sequence length, after model cropping.
-        transcriptome (bgene.Transcriptome): Transcriptome.
+        transcriptome (Transcriptome): Transcriptome.
         model_stride (int): Model stride.
         span (bool): If True, use gene span instead of exons.
         majority_overlap (bool): If True, only consider bins for which
@@ -458,24 +452,6 @@ def map_snpseq_genes(
       snpseq_gene_slice[si][gene_id] = np.unique(gene_slice)
 
   return snpseq_gene_slice
-
-
-def targets_prep_strand(targets_df):
-  """Adjust targets table for merged stranded datasets."""
-  # attach strand
-  targets_strand = []
-  for _, target in targets_df.iterrows():
-    if target.strand_pair == target.name:
-      targets_strand.append('.')
-    else:
-      targets_strand.append(target.identifier[-1])
-  targets_df['strand'] = targets_strand
-
-  # collapse stranded
-  strand_mask = (targets_df.strand != '-')
-  targets_strand_df = targets_df[strand_mask]
-
-  return targets_strand_df
 
 
 def write_pct(sed_out, sed_stats):

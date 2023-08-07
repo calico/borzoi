@@ -14,26 +14,14 @@
 # limitations under the License.
 # =========================================================================
 from optparse import OptionParser, OptionGroup
-import glob
-import h5py
-import json
-import pdb
 import os
-import shutil
-import sys
-
-import numpy as np
-import pandas as pd
 
 import slurm
-#import util
-
-from basenji_test_folds import stat_tests
 
 """
 borzoi_borzoi_trip_folds.py
 
-Benchmark Basenji model replicates on TRIP prediction task.
+Benchmark Borzoi model replicates on TRIP prediction task.
 """
 
 ################################################################################
@@ -46,7 +34,7 @@ def main():
   # trip
   trip_options = OptionGroup(parser, 'borzoi_trip.py options')
   trip_options.add_option('-f', dest='genome_fasta',
-      default='%s/data/hg38.fa' % os.environ['BASENJIDIR'],
+      default='%s/assembly/ucsc/hg38.fa' % os.environ['HG38'],
       help='Genome FASTA for sequences [Default: %default]')
   trip_options.add_option('-o',dest='out_dir',
       default='trip',

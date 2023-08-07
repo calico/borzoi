@@ -16,15 +16,13 @@
 from optparse import OptionParser, OptionGroup
 import h5py
 import pickle
-import pdb
 import os
-import subprocess
 
 import numpy as np
 import pandas as pd
 
 import slurm
-from basenji.gene import gtf_kv
+from baskerville.gene import gtf_kv
 from borzoi_bench_crispr import accuracy_stats, complete_h5, score_sites
 from borzoi_satg_gene_multi import collect_h5
 
@@ -42,11 +40,11 @@ def main():
   parser = OptionParser(usage)
 
   # crispr
-  crispr_options = OptionGroup(parser, 'basenji_bench_crispr.py options')
+  crispr_options = OptionGroup(parser, 'borzoi_bench_crispr.py options')
   crispr_options.add_option('-b', dest='bench_dir',
       default='/home/drk/seqnn/data/crispr/gasperini')
   crispr_options.add_option('-f', dest='genome_fasta',
-      default='%s/data/hg38.fa' % os.environ['BASENJIDIR'],
+      default='%s/assembly/ucsc/hg38.fa' % os.environ['HG38'],
       help='Genome FASTA for sequences [Default: %default]')
   crispr_options.add_option('-o', dest='out_dir',
       default='gasperini', help='Output directory [Default: %default]')

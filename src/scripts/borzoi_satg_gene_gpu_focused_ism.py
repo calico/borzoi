@@ -13,191 +13,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =========================================================================
-from __future__ import print_function
-
 from optparse import OptionParser
 
 import gc
 import json
 import os
-import pdb
-import pickle
-from queue import Queue
-import random
-import sys
-from threading import Thread
-import time
 
 import h5py
 import numpy as np
 import pandas as pd
 import pysam
+from scipy.ndimage import gaussian_filter1d
 import tensorflow as tf
 
-from basenji import dna_io
-from basenji import gene as bgene
-from basenji import seqnn
-from borzoi_sed import targets_prep_strand
-
-from scipy.ndimage import gaussian_filter1d
+from baskerville.dataset import targets_prep_strand
+from baskerville import dna_io
+from baskerville import gene as bgene
+from baskerville import seqnn
 
 '''
 borzoi_satg_gene_gpu_focused_ism.py
 
 Perform an ISM analysis for genes specified in a GTF file, targeting high-saliency regions based on gradient scores.
 '''
-
-# tf code for computing ISM scores on GPU
-@tf.function
-def _score_func(model, seq_1hot, target_slice, pos_slice, pos_mask=None, pos_slice_denom=None, pos_mask_denom=True, track_scale=1., track_transform=1., clip_soft=None, pseudo_count=0., no_transform=False, aggregate_tracks=None, use_mean=False, use_ratio=False, use_logodds=False) :
-      
-      # predict
-      preds = tf.gather(model(seq_1hot, training=False), target_slice, axis=-1, batch_dims=1)
-      
-      if not no_transform :
-      
-        # undo scale
-        preds = preds / track_scale
-
-        # undo soft_clip
-        if clip_soft is not None :
-          preds = tf.where(preds > clip_soft, (preds - clip_soft)**2 + clip_soft, preds)
-
-        # undo sqrt
-        preds = preds**(1. / track_transform)
-      
-      if aggregate_tracks is not None :
-        preds = tf.reduce_mean(tf.reshape(preds, (preds.shape[0], preds.shape[1], preds.shape[2] // aggregate_tracks, aggregate_tracks)), axis=-1)
-      
-      # slice specified positions
-      preds_slice = tf.gather(preds, pos_slice, axis=1, batch_dims=1)
-      if pos_mask is not None :
-        preds_slice = preds_slice * pos_mask
-      
-      # slice denominator positions
-      if use_ratio and pos_slice_denom is not None:
-        preds_slice_denom = tf.gather(preds, pos_slice_denom, axis=1, batch_dims=1)
-        if pos_mask_denom is not None :
-          preds_slice_denom = preds_slice_denom * pos_mask_denom
-      
-      # aggregate over positions
-      if not use_mean :
-        preds_agg = tf.reduce_sum(preds_slice, axis=1)
-        if use_ratio and pos_slice_denom is not None:
-          preds_agg_denom = tf.reduce_sum(preds_slice_denom, axis=1)
-      else :
-        if pos_mask is not None :
-          preds_agg = tf.reduce_sum(preds_slice, axis=1) / tf.reduce_sum(pos_mask, axis=1)
-        else :
-          preds_agg = tf.reduce_mean(preds_slice, axis=1)
-        
-        if use_ratio and pos_slice_denom is not None:
-          if pos_mask_denom is not None :
-            preds_agg_denom = tf.reduce_sum(preds_slice_denom, axis=1) / tf.reduce_sum(pos_mask_denom, axis=1)
-          else :
-            preds_agg_denom = tf.reduce_mean(preds_slice_denom, axis=1)
-
-      # compute final statistic
-      if no_transform :
-        score_ratios = preds_agg
-      elif not use_ratio :
-        score_ratios = tf.math.log(preds_agg + pseudo_count + 1e-6)
-      else :
-        if not use_logodds :
-          score_ratios = tf.math.log((preds_agg + pseudo_count) / (preds_agg_denom + pseudo_count) + 1e-6)
-        else :
-          score_ratios = tf.math.log(((preds_agg + pseudo_count) / (preds_agg_denom + pseudo_count)) / (1. - ((preds_agg + pseudo_count) / (preds_agg_denom + pseudo_count))) + 1e-6)
-
-      return score_ratios
-
-def get_ism(seqnn_model, seq_1hot_wt, ism_start=0, ism_end=524288, head_i=None, target_slice=None, pos_slice=None, pos_mask=None, pos_slice_denom=None, pos_mask_denom=None, track_scale=1., track_transform=1., clip_soft=None, pseudo_count=0., no_transform=False, aggregate_tracks=None, use_mean=False, use_ratio=False, use_logodds=False, bases=[0, 1, 2, 3]) :
-    
-    # choose model
-    if seqnn_model.ensemble is not None:
-      model = seqnn_model.ensemble
-    elif head_i is not None:
-      model = seqnn_model.models[head_i]
-    else:
-      model = seqnn_model.model
-    
-    # verify tensor shape(s)
-    seq_1hot_wt = seq_1hot_wt.astype('float32')
-    target_slice = np.array(target_slice).astype('int32')
-    pos_slice = np.array(pos_slice).astype('int32')
-    
-    # convert constants to tf tensors
-    track_scale = tf.constant(track_scale, dtype=tf.float32)
-    track_transform = tf.constant(track_transform, dtype=tf.float32)
-    if clip_soft is not None :
-        clip_soft = tf.constant(clip_soft, dtype=tf.float32)
-    pseudo_count = tf.constant(pseudo_count, dtype=tf.float32)
-    
-    if pos_mask is not None :
-      pos_mask = np.array(pos_mask).astype('float32')
-    
-    if use_ratio and pos_slice_denom is not None :
-      pos_slice_denom = np.array(pos_slice_denom).astype('int32')
-      
-      if pos_mask_denom is not None :
-        pos_mask_denom = np.array(pos_mask_denom).astype('float32')
-    
-    if len(seq_1hot_wt.shape) < 3:
-      seq_1hot_wt = seq_1hot_wt[None, ...]
-    
-    if len(target_slice.shape) < 2:
-      target_slice = target_slice[None, ...]
-    
-    if len(pos_slice.shape) < 2:
-      pos_slice = pos_slice[None, ...]
-    
-    if pos_mask is not None and len(pos_mask.shape) < 2:
-      pos_mask = pos_mask[None, ...]
-    
-    if use_ratio and pos_slice_denom is not None and len(pos_slice_denom.shape) < 2:
-      pos_slice_denom = pos_slice_denom[None, ...]
-      
-      if pos_mask_denom is not None and len(pos_mask_denom.shape) < 2:
-        pos_mask_denom = pos_mask_denom[None, ...]
-    
-    # convert to tf tensors
-    seq_1hot_wt_tf = tf.convert_to_tensor(seq_1hot_wt, dtype=tf.float32)
-    target_slice = tf.convert_to_tensor(target_slice, dtype=tf.int32)
-    pos_slice = tf.convert_to_tensor(pos_slice, dtype=tf.int32)
-    
-    if pos_mask is not None :
-        pos_mask = tf.convert_to_tensor(pos_mask, dtype=tf.float32)
-    
-    if use_ratio and pos_slice_denom is not None :
-        pos_slice_denom = tf.convert_to_tensor(pos_slice_denom, dtype=tf.int32)
-    
-        if pos_mask_denom is not None :
-            pos_mask_denom = tf.convert_to_tensor(pos_mask_denom, dtype=tf.float32)
-    
-    # allocate ism result tensor
-    pred_ism = np.zeros((524288, 4, target_slice.shape[1] // (aggregate_tracks if aggregate_tracks is not None else 1)))
-    
-    # get wt pred
-    score_wt = _score_func(model, seq_1hot_wt_tf, target_slice, pos_slice, pos_mask, pos_slice_denom, pos_mask_denom, track_scale, track_transform, clip_soft, pseudo_count, no_transform, aggregate_tracks, use_mean, use_ratio, use_logodds).numpy()
-    
-    for j in range(ism_start, ism_end) :
-        for b in bases :
-            if seq_1hot_wt[0, j, b] != 1. : 
-                seq_1hot_mut = np.copy(seq_1hot_wt)
-                seq_1hot_mut[0, j, :] = 0.
-                seq_1hot_mut[0, j, b] = 1.
-                
-                # convert to tf tensor
-                seq_1hot_mut_tf = tf.convert_to_tensor(seq_1hot_mut, dtype=tf.float32)
-
-                # get mut pred
-                score_mut = _score_func(model, seq_1hot_mut_tf, target_slice, pos_slice, pos_mask, pos_slice_denom, pos_mask_denom, track_scale, track_transform, clip_soft, pseudo_count, no_transform, aggregate_tracks, use_mean, use_ratio, use_logodds).numpy()
-                
-                pred_ism[j, b, :] = score_wt - score_mut
-
-    pred_ism = np.tile(np.mean(pred_ism, axis=1, keepdims=True), (1, 4, 1)) * seq_1hot_wt[0, ..., None]
-    
-    return pred_ism
-
 
 ################################################################################
 # main
@@ -206,7 +44,7 @@ def main():
   usage = 'usage: %prog [options] <params> <model> <gene_gtf>'
   parser = OptionParser(usage)
   parser.add_option('--fa', dest='genome_fasta',
-      default='%s/data/hg38.fa' % os.environ['BASENJIDIR'],
+      default='%s/assembly/ucsc/hg38.fa' % os.environ['HG38'],
       help='Genome FASTA for sequences [Default: %default]')
   parser.add_option('-o', dest='out_dir',
       default='satg_out', help='Output directory [Default: %default]')
@@ -665,6 +503,158 @@ def make_seq_1hot(genome_open, chrm, start, end, seq_len):
 
   seq_1hot = dna_io.dna_1hot(seq_dna)
   return seq_1hot
+
+
+# tf code for computing ISM scores on GPU
+@tf.function
+def _score_func(model, seq_1hot, target_slice, pos_slice, pos_mask=None, pos_slice_denom=None, pos_mask_denom=True, track_scale=1., track_transform=1., clip_soft=None, pseudo_count=0., no_transform=False, aggregate_tracks=None, use_mean=False, use_ratio=False, use_logodds=False) :
+      
+      # predict
+      preds = tf.gather(model(seq_1hot, training=False), target_slice, axis=-1, batch_dims=1)
+      
+      if not no_transform :
+      
+        # undo scale
+        preds = preds / track_scale
+
+        # undo soft_clip
+        if clip_soft is not None :
+          preds = tf.where(preds > clip_soft, (preds - clip_soft)**2 + clip_soft, preds)
+
+        # undo sqrt
+        preds = preds**(1. / track_transform)
+      
+      if aggregate_tracks is not None :
+        preds = tf.reduce_mean(tf.reshape(preds, (preds.shape[0], preds.shape[1], preds.shape[2] // aggregate_tracks, aggregate_tracks)), axis=-1)
+      
+      # slice specified positions
+      preds_slice = tf.gather(preds, pos_slice, axis=1, batch_dims=1)
+      if pos_mask is not None :
+        preds_slice = preds_slice * pos_mask
+      
+      # slice denominator positions
+      if use_ratio and pos_slice_denom is not None:
+        preds_slice_denom = tf.gather(preds, pos_slice_denom, axis=1, batch_dims=1)
+        if pos_mask_denom is not None :
+          preds_slice_denom = preds_slice_denom * pos_mask_denom
+      
+      # aggregate over positions
+      if not use_mean :
+        preds_agg = tf.reduce_sum(preds_slice, axis=1)
+        if use_ratio and pos_slice_denom is not None:
+          preds_agg_denom = tf.reduce_sum(preds_slice_denom, axis=1)
+      else :
+        if pos_mask is not None :
+          preds_agg = tf.reduce_sum(preds_slice, axis=1) / tf.reduce_sum(pos_mask, axis=1)
+        else :
+          preds_agg = tf.reduce_mean(preds_slice, axis=1)
+        
+        if use_ratio and pos_slice_denom is not None:
+          if pos_mask_denom is not None :
+            preds_agg_denom = tf.reduce_sum(preds_slice_denom, axis=1) / tf.reduce_sum(pos_mask_denom, axis=1)
+          else :
+            preds_agg_denom = tf.reduce_mean(preds_slice_denom, axis=1)
+
+      # compute final statistic
+      if no_transform :
+        score_ratios = preds_agg
+      elif not use_ratio :
+        score_ratios = tf.math.log(preds_agg + pseudo_count + 1e-6)
+      else :
+        if not use_logodds :
+          score_ratios = tf.math.log((preds_agg + pseudo_count) / (preds_agg_denom + pseudo_count) + 1e-6)
+        else :
+          score_ratios = tf.math.log(((preds_agg + pseudo_count) / (preds_agg_denom + pseudo_count)) / (1. - ((preds_agg + pseudo_count) / (preds_agg_denom + pseudo_count))) + 1e-6)
+
+      return score_ratios
+
+def get_ism(seqnn_model, seq_1hot_wt, ism_start=0, ism_end=524288, head_i=None, target_slice=None, pos_slice=None, pos_mask=None, pos_slice_denom=None, pos_mask_denom=None, track_scale=1., track_transform=1., clip_soft=None, pseudo_count=0., no_transform=False, aggregate_tracks=None, use_mean=False, use_ratio=False, use_logodds=False, bases=[0, 1, 2, 3]) :
+    
+    # choose model
+    if seqnn_model.ensemble is not None:
+      model = seqnn_model.ensemble
+    elif head_i is not None:
+      model = seqnn_model.models[head_i]
+    else:
+      model = seqnn_model.model
+    
+    # verify tensor shape(s)
+    seq_1hot_wt = seq_1hot_wt.astype('float32')
+    target_slice = np.array(target_slice).astype('int32')
+    pos_slice = np.array(pos_slice).astype('int32')
+    
+    # convert constants to tf tensors
+    track_scale = tf.constant(track_scale, dtype=tf.float32)
+    track_transform = tf.constant(track_transform, dtype=tf.float32)
+    if clip_soft is not None :
+        clip_soft = tf.constant(clip_soft, dtype=tf.float32)
+    pseudo_count = tf.constant(pseudo_count, dtype=tf.float32)
+    
+    if pos_mask is not None :
+      pos_mask = np.array(pos_mask).astype('float32')
+    
+    if use_ratio and pos_slice_denom is not None :
+      pos_slice_denom = np.array(pos_slice_denom).astype('int32')
+      
+      if pos_mask_denom is not None :
+        pos_mask_denom = np.array(pos_mask_denom).astype('float32')
+    
+    if len(seq_1hot_wt.shape) < 3:
+      seq_1hot_wt = seq_1hot_wt[None, ...]
+    
+    if len(target_slice.shape) < 2:
+      target_slice = target_slice[None, ...]
+    
+    if len(pos_slice.shape) < 2:
+      pos_slice = pos_slice[None, ...]
+    
+    if pos_mask is not None and len(pos_mask.shape) < 2:
+      pos_mask = pos_mask[None, ...]
+    
+    if use_ratio and pos_slice_denom is not None and len(pos_slice_denom.shape) < 2:
+      pos_slice_denom = pos_slice_denom[None, ...]
+      
+      if pos_mask_denom is not None and len(pos_mask_denom.shape) < 2:
+        pos_mask_denom = pos_mask_denom[None, ...]
+    
+    # convert to tf tensors
+    seq_1hot_wt_tf = tf.convert_to_tensor(seq_1hot_wt, dtype=tf.float32)
+    target_slice = tf.convert_to_tensor(target_slice, dtype=tf.int32)
+    pos_slice = tf.convert_to_tensor(pos_slice, dtype=tf.int32)
+    
+    if pos_mask is not None :
+        pos_mask = tf.convert_to_tensor(pos_mask, dtype=tf.float32)
+    
+    if use_ratio and pos_slice_denom is not None :
+        pos_slice_denom = tf.convert_to_tensor(pos_slice_denom, dtype=tf.int32)
+    
+        if pos_mask_denom is not None :
+            pos_mask_denom = tf.convert_to_tensor(pos_mask_denom, dtype=tf.float32)
+    
+    # allocate ism result tensor
+    pred_ism = np.zeros((524288, 4, target_slice.shape[1] // (aggregate_tracks if aggregate_tracks is not None else 1)))
+    
+    # get wt pred
+    score_wt = _score_func(model, seq_1hot_wt_tf, target_slice, pos_slice, pos_mask, pos_slice_denom, pos_mask_denom, track_scale, track_transform, clip_soft, pseudo_count, no_transform, aggregate_tracks, use_mean, use_ratio, use_logodds).numpy()
+    
+    for j in range(ism_start, ism_end) :
+        for b in bases :
+            if seq_1hot_wt[0, j, b] != 1. : 
+                seq_1hot_mut = np.copy(seq_1hot_wt)
+                seq_1hot_mut[0, j, :] = 0.
+                seq_1hot_mut[0, j, b] = 1.
+                
+                # convert to tf tensor
+                seq_1hot_mut_tf = tf.convert_to_tensor(seq_1hot_mut, dtype=tf.float32)
+
+                # get mut pred
+                score_mut = _score_func(model, seq_1hot_mut_tf, target_slice, pos_slice, pos_mask, pos_slice_denom, pos_mask_denom, track_scale, track_transform, clip_soft, pseudo_count, no_transform, aggregate_tracks, use_mean, use_ratio, use_logodds).numpy()
+                
+                pred_ism[j, b, :] = score_wt - score_mut
+
+    pred_ism = np.tile(np.mean(pred_ism, axis=1, keepdims=True), (1, 4, 1)) * seq_1hot_wt[0, ..., None]
+    
+    return pred_ism
 
 ################################################################################
 # __main__

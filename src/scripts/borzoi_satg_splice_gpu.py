@@ -13,31 +13,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =========================================================================
-from __future__ import print_function
-
 from optparse import OptionParser
 
 import gc
 import json
 import os
-import pdb
-import pickle
-from queue import Queue
-import random
-import sys
-from threading import Thread
-import time
 
 import h5py
 import numpy as np
 import pandas as pd
 import pysam
-import tensorflow as tf
 
-from basenji import dna_io
-from basenji import gene as bgene
-from basenji import seqnn
-from borzoi_sed import targets_prep_strand
+from baskerville.dataset import targets_prep_strand
+from baskerville import dna_io
+from baskerville import gene as bgene
+from baskerville import seqnn
 
 '''
 borzoi_satg_splice_gpu.py
@@ -52,7 +42,7 @@ def main():
   usage = 'usage: %prog [options] <params> <model> <gene_gtf>'
   parser = OptionParser(usage)
   parser.add_option('--fa', dest='genome_fasta',
-      default='%s/data/hg38.fa' % os.environ['BASENJIDIR'],
+      default='%s/assembly/ucsc/hg38.fa' % os.environ['HG38'],
       help='Genome FASTA for sequences [Default: %default]')
   parser.add_option('-o', dest='out_dir',
       default='satg_out', help='Output directory [Default: %default]')

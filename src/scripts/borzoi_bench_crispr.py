@@ -15,7 +15,6 @@
 # =========================================================================
 from optparse import OptionParser, OptionGroup
 import pickle
-import pdb
 import os
 import subprocess
 
@@ -27,7 +26,7 @@ from sklearn.metrics import average_precision_score, roc_auc_score
 
 import slurm
 
-from basenji.gene import gtf_kv
+from baskerville.gene import gtf_kv
 from borzoi_satg_gene_multi import collect_h5
 
 '''
@@ -42,9 +41,9 @@ def main():
   parser = OptionParser(usage)
 
   # satg
-  satg_options = OptionGroup(parser, 'basenji_satg_gene.py options')
+  satg_options = OptionGroup(parser, 'borzoi_satg_gene.py options')
   satg_options.add_option('-f', dest='genome_fasta',
-      default='%s/data/hg38.fa' % os.environ['BASENJIDIR'],
+      default='%s/assembly/ucsc/hg38.fa' % os.environ['HG38'],
       help='Genome FASTA for sequences [Default: %default]')
   satg_options.add_option('-o', dest='out_dir',
       default='crispr_out', help='Output directory [Default: %default]')

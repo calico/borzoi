@@ -20,12 +20,6 @@ from optparse import OptionParser
 import gc
 import json
 import os
-import pdb
-import pickle
-from queue import Queue
-import random
-import sys
-from threading import Thread
 import time
 
 import h5py
@@ -34,158 +28,16 @@ import pandas as pd
 import pysam
 import tensorflow as tf
 
-from basenji import dna_io
-from basenji import gene as bgene
-from basenji import seqnn
-from borzoi_sed import targets_prep_strand
+from baskerville.dataset import targets_prep_strand
+from baskerville import dna_io
+from baskerville import gene as bgene
+from baskerville import seqnn
 
 '''
 borzoi_satg_gene_gpu.py
 
 Perform a gradient saliency analysis for genes specified in a GTF file (GPU-friendly).
 '''
-
-# tf code for predicting raw sum-of-expression counts on GPU
-@tf.function
-def _count_func(model, seq_1hot, target_slice, pos_slice, pos_mask=None, track_scale=1., track_transform=1., clip_soft=None, use_mean=False) :
-      
-      # predict
-      preds = tf.gather(model(seq_1hot, training=False), target_slice, axis=-1, batch_dims=1)
-      
-      # undo scale
-      preds = preds / track_scale
-
-      # undo soft_clip
-      if clip_soft is not None :
-        preds = tf.where(preds > clip_soft, (preds - clip_soft)**2 + clip_soft, preds)
-
-      # undo sqrt
-      preds = preds**(1. / track_transform)
-      
-      # aggregate over tracks (average)
-      preds = tf.reduce_mean(preds, axis=-1)
-      
-      # slice specified positions
-      preds_slice = tf.gather(preds, pos_slice, axis=-1, batch_dims=1)
-      if pos_mask is not None :
-        preds_slice = preds_slice * pos_mask
-      
-      # aggregate over positions
-      if not use_mean :
-        preds_agg = tf.reduce_sum(preds_slice, axis=-1)
-      else :
-        if pos_mask is not None :
-          preds_agg = tf.reduce_sum(preds_slice, axis=-1) / tf.reduce_sum(pos_mask, axis=-1)
-        else :
-          preds_agg = tf.reduce_mean(preds_slice, axis=-1)
-
-      return preds_agg
-
-# code for getting model predictions from a tensor of input sequence patterns
-def predict_counts(seqnn_model, seq_1hot, head_i=None, target_slice=None, pos_slice=None, pos_mask=None, chunk_size=None, batch_size=1, track_scale=1., track_transform=1., clip_soft=None, use_mean=False, dtype='float32'):
-    
-    # start time
-    t0 = time.time()
-    
-    # choose model
-    if seqnn_model.ensemble is not None:
-      model = seqnn_model.ensemble
-    elif head_i is not None:
-      model = seqnn_model.models[head_i]
-    else:
-      model = seqnn_model.model
-    
-    # verify tensor shape(s)
-    seq_1hot = seq_1hot.astype('float32')
-    target_slice = np.array(target_slice).astype('int32')
-    pos_slice = np.array(pos_slice).astype('int32')
-    
-    # convert constants to tf tensors
-    track_scale = tf.constant(track_scale, dtype=tf.float32)
-    track_transform = tf.constant(track_transform, dtype=tf.float32)
-    if clip_soft is not None :
-        clip_soft = tf.constant(clip_soft, dtype=tf.float32)
-    
-    if pos_mask is not None :
-      pos_mask = np.array(pos_mask).astype('float32')
-    
-    if len(seq_1hot.shape) < 3:
-      seq_1hot = seq_1hot[None, ...]
-    
-    if len(target_slice.shape) < 2:
-      target_slice = target_slice[None, ...]
-    
-    if len(pos_slice.shape) < 2:
-      pos_slice = pos_slice[None, ...]
-    
-    if pos_mask is not None and len(pos_mask.shape) < 2:
-      pos_mask = pos_mask[None, ...]
-    
-    # chunk parameters
-    num_chunks = 1
-    if chunk_size is None :
-      chunk_size = seq_1hot.shape[0]
-    else :
-      num_chunks = int(np.ceil(seq_1hot.shape[0] / chunk_size))
-    
-    # loop over chunks
-    pred_chunks = []
-    for ci in range(num_chunks) :
-      
-      # collect chunk
-      seq_1hot_chunk = seq_1hot[ci * chunk_size:(ci+1) * chunk_size, ...]
-      target_slice_chunk = target_slice[ci * chunk_size:(ci+1) * chunk_size, ...]
-      pos_slice_chunk = pos_slice[ci * chunk_size:(ci+1) * chunk_size, ...]
-      
-      pos_mask_chunk = None
-      if pos_mask is not None :
-        pos_mask_chunk = pos_mask[ci * chunk_size:(ci+1) * chunk_size, ...]
-      
-      actual_chunk_size = seq_1hot_chunk.shape[0]
-      
-      # convert to tf tensors
-      seq_1hot_chunk = tf.convert_to_tensor(seq_1hot_chunk, dtype=tf.float32)
-      target_slice_chunk = tf.convert_to_tensor(target_slice_chunk, dtype=tf.int32)
-      pos_slice_chunk = tf.convert_to_tensor(pos_slice_chunk, dtype=tf.int32)
-      
-      if pos_mask is not None :
-        pos_mask_chunk = tf.convert_to_tensor(pos_mask_chunk, dtype=tf.float32)
-      
-      # batching parameters
-      num_batches = int(np.ceil(actual_chunk_size / batch_size))
-      
-      # loop over batches
-      pred_batches = []
-      for bi in range(num_batches) :
-        
-        # collect batch
-        seq_1hot_batch = seq_1hot_chunk[bi * batch_size:(bi+1) * batch_size, ...]
-        target_slice_batch = target_slice_chunk[bi * batch_size:(bi+1) * batch_size, ...]
-        pos_slice_batch = pos_slice_chunk[bi * batch_size:(bi+1) * batch_size, ...]
-        
-        pos_mask_batch = None
-        if pos_mask is not None :
-          pos_mask_batch = pos_mask_chunk[bi * batch_size:(bi+1) * batch_size, ...]
-
-        pred_batch = _count_func(model, seq_1hot_batch, target_slice_batch, pos_slice_batch, pos_mask_batch, track_scale, track_transform, clip_soft, use_mean).numpy().astype(dtype)
-      
-        pred_batches.append(pred_batch)
-    
-      # concat predicted batches
-      preds = np.concatenate(pred_batches, axis=0)
-    
-      pred_chunks.append(preds)
-      
-      # collect garbage
-      gc.collect()
-    
-    # concat predicted chunks
-    preds = np.concatenate(pred_chunks, axis=0)
-    
-    print('Made predictions in %ds' % (time.time()-t0))
-
-    return preds
-
 
 ################################################################################
 # main
@@ -194,7 +46,7 @@ def main():
   usage = 'usage: %prog [options] <params> <model> <gene_gtf>'
   parser = OptionParser(usage)
   parser.add_option('--fa', dest='genome_fasta',
-      default='%s/data/hg38.fa' % os.environ['BASENJIDIR'],
+      default='%s/assembly/ucsc/hg38.fa' % os.environ['HG38'],
       help='Genome FASTA for sequences [Default: %default]')
   parser.add_option('-o', dest='out_dir',
       default='satg_out', help='Output directory [Default: %default]')
@@ -680,6 +532,147 @@ def make_seq_1hot(genome_open, chrm, start, end, seq_len):
 
   seq_1hot = dna_io.dna_1hot(seq_dna)
   return seq_1hot
+
+# tf code for predicting raw sum-of-expression counts on GPU
+@tf.function
+def _count_func(model, seq_1hot, target_slice, pos_slice, pos_mask=None, track_scale=1., track_transform=1., clip_soft=None, use_mean=False) :
+      
+      # predict
+      preds = tf.gather(model(seq_1hot, training=False), target_slice, axis=-1, batch_dims=1)
+      
+      # undo scale
+      preds = preds / track_scale
+
+      # undo soft_clip
+      if clip_soft is not None :
+        preds = tf.where(preds > clip_soft, (preds - clip_soft)**2 + clip_soft, preds)
+
+      # undo sqrt
+      preds = preds**(1. / track_transform)
+      
+      # aggregate over tracks (average)
+      preds = tf.reduce_mean(preds, axis=-1)
+      
+      # slice specified positions
+      preds_slice = tf.gather(preds, pos_slice, axis=-1, batch_dims=1)
+      if pos_mask is not None :
+        preds_slice = preds_slice * pos_mask
+      
+      # aggregate over positions
+      if not use_mean :
+        preds_agg = tf.reduce_sum(preds_slice, axis=-1)
+      else :
+        if pos_mask is not None :
+          preds_agg = tf.reduce_sum(preds_slice, axis=-1) / tf.reduce_sum(pos_mask, axis=-1)
+        else :
+          preds_agg = tf.reduce_mean(preds_slice, axis=-1)
+
+      return preds_agg
+
+# code for getting model predictions from a tensor of input sequence patterns
+def predict_counts(seqnn_model, seq_1hot, head_i=None, target_slice=None, pos_slice=None, pos_mask=None, chunk_size=None, batch_size=1, track_scale=1., track_transform=1., clip_soft=None, use_mean=False, dtype='float32'):
+    
+    # start time
+    t0 = time.time()
+    
+    # choose model
+    if seqnn_model.ensemble is not None:
+      model = seqnn_model.ensemble
+    elif head_i is not None:
+      model = seqnn_model.models[head_i]
+    else:
+      model = seqnn_model.model
+    
+    # verify tensor shape(s)
+    seq_1hot = seq_1hot.astype('float32')
+    target_slice = np.array(target_slice).astype('int32')
+    pos_slice = np.array(pos_slice).astype('int32')
+    
+    # convert constants to tf tensors
+    track_scale = tf.constant(track_scale, dtype=tf.float32)
+    track_transform = tf.constant(track_transform, dtype=tf.float32)
+    if clip_soft is not None :
+        clip_soft = tf.constant(clip_soft, dtype=tf.float32)
+    
+    if pos_mask is not None :
+      pos_mask = np.array(pos_mask).astype('float32')
+    
+    if len(seq_1hot.shape) < 3:
+      seq_1hot = seq_1hot[None, ...]
+    
+    if len(target_slice.shape) < 2:
+      target_slice = target_slice[None, ...]
+    
+    if len(pos_slice.shape) < 2:
+      pos_slice = pos_slice[None, ...]
+    
+    if pos_mask is not None and len(pos_mask.shape) < 2:
+      pos_mask = pos_mask[None, ...]
+    
+    # chunk parameters
+    num_chunks = 1
+    if chunk_size is None :
+      chunk_size = seq_1hot.shape[0]
+    else :
+      num_chunks = int(np.ceil(seq_1hot.shape[0] / chunk_size))
+    
+    # loop over chunks
+    pred_chunks = []
+    for ci in range(num_chunks) :
+      
+      # collect chunk
+      seq_1hot_chunk = seq_1hot[ci * chunk_size:(ci+1) * chunk_size, ...]
+      target_slice_chunk = target_slice[ci * chunk_size:(ci+1) * chunk_size, ...]
+      pos_slice_chunk = pos_slice[ci * chunk_size:(ci+1) * chunk_size, ...]
+      
+      pos_mask_chunk = None
+      if pos_mask is not None :
+        pos_mask_chunk = pos_mask[ci * chunk_size:(ci+1) * chunk_size, ...]
+      
+      actual_chunk_size = seq_1hot_chunk.shape[0]
+      
+      # convert to tf tensors
+      seq_1hot_chunk = tf.convert_to_tensor(seq_1hot_chunk, dtype=tf.float32)
+      target_slice_chunk = tf.convert_to_tensor(target_slice_chunk, dtype=tf.int32)
+      pos_slice_chunk = tf.convert_to_tensor(pos_slice_chunk, dtype=tf.int32)
+      
+      if pos_mask is not None :
+        pos_mask_chunk = tf.convert_to_tensor(pos_mask_chunk, dtype=tf.float32)
+      
+      # batching parameters
+      num_batches = int(np.ceil(actual_chunk_size / batch_size))
+      
+      # loop over batches
+      pred_batches = []
+      for bi in range(num_batches) :
+        
+        # collect batch
+        seq_1hot_batch = seq_1hot_chunk[bi * batch_size:(bi+1) * batch_size, ...]
+        target_slice_batch = target_slice_chunk[bi * batch_size:(bi+1) * batch_size, ...]
+        pos_slice_batch = pos_slice_chunk[bi * batch_size:(bi+1) * batch_size, ...]
+        
+        pos_mask_batch = None
+        if pos_mask is not None :
+          pos_mask_batch = pos_mask_chunk[bi * batch_size:(bi+1) * batch_size, ...]
+
+        pred_batch = _count_func(model, seq_1hot_batch, target_slice_batch, pos_slice_batch, pos_mask_batch, track_scale, track_transform, clip_soft, use_mean).numpy().astype(dtype)
+      
+        pred_batches.append(pred_batch)
+    
+      # concat predicted batches
+      preds = np.concatenate(pred_batches, axis=0)
+    
+      pred_chunks.append(preds)
+      
+      # collect garbage
+      gc.collect()
+    
+    # concat predicted chunks
+    preds = np.concatenate(pred_chunks, axis=0)
+    
+    print('Made predictions in %ds' % (time.time()-t0))
+
+    return preds
 
 ################################################################################
 # __main__

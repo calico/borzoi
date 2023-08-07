@@ -13,30 +13,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =========================================================================
-from __future__ import print_function
-
 from optparse import OptionParser
 from collections import OrderedDict
 import json
 import pickle
 import os
-import pdb
 import sys
-import time
 
 import h5py
 import numpy as np
 import pandas as pd
 import pybedtools
 import pysam
-from scipy.special import rel_entr
-import tensorflow as tf
 
-from basenji import dna_io
-from basenji import gene as bgene
-from basenji import seqnn
-from basenji import stream
-from basenji import vcf as bvcf
+from baskerville import gene as bgene
+from baskerville import seqnn
+from baskerville import stream
+from baskerville import vcf as bvcf
 
 '''
 borzoi_sed_ipaqtl_cov.py
@@ -55,7 +48,7 @@ def main():
   usage = 'usage: %prog [options] <params_file> <model_file> <vcf_file>'
   parser = OptionParser(usage)
   parser.add_option('-f', dest='genome_fasta',
-      default='%s/data/hg38.fa' % os.environ['BASENJIDIR'],
+      default='%s/assembly/ucsc/hg38.fa' % os.environ['HG38'],
       help='Genome FASTA for sequences [Default: %default]')
   parser.add_option('-g', dest='genes_gtf',
       default='%s/genes/gencode41/gencode41_basic_nort.gtf' % os.environ['HG38'],
