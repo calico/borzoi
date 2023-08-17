@@ -3,11 +3,11 @@
 <!---[![Validate prettier formatting](https://github.com/calico/github-template-python-library/actions/workflows/check-prettier-formatting.yml/badge.svg?branch=main)](https://github.com/calico/github-template-python-library/actions/workflows/check-prettier-formatting.yml)--->
 
 # Borzoi - Predicting RNA-seq from DNA Sequence
-Code repository for training and using Borzoi models, which are convolutional neural networks trained to predict RNA-seq coverage at 32bp resolution given 524kb sequences as input. The model is described in the following bioRxiv preprint:<br/>
+Code repository for Borzoi models, which are convolutional neural networks trained to predict RNA-seq coverage at 32bp resolution given 524kb input sequences. The model is described in the following bioRxiv preprint:<br/>
 
 [https://biorxiv.org/content/todo.1.2.3](https://biorxiv.org/content/todo.1.2.3).
 
-Borzoi was trained on a large set of RNA-seq experiments from ENCODE and GTEx, as well as re-processed versions of the original Enformer training data (including ChIP-seq and DNase coverage tracks from ENCODE, ATAC-seq data from CATlas, and CAGE data from FANTOM5). You can find a detailed list of trained-on (human) experiments [here](https://raw.githubusercontent.com/calico/borzoi/main/examples/targets_human.txt).
+Borzoi was trained on a large set of RNA-seq experiments from ENCODE and GTEx, as well as re-processed versions of the original Enformer training data (including ChIP-seq and DNase data from ENCODE, ATAC-seq data from CATlas, and CAGE data from FANTOM5). Click [here](https://raw.githubusercontent.com/calico/borzoi/main/examples/targets_human.txt) for a list of trained-on experiments.
 
 The repository contains example usage code (including jupyter notebooks for predicting and visualizing genetic variants) as well as links for downloading model weights, training data, QTL benchmark tasks, etc.
 
@@ -28,7 +28,7 @@ cd borzoi
 pip install -e .
 ```
 
-The baskerville and borzoi repositories further depend on a number of python packages (which are automatically installed with borzoi). See **setup.cfg** for a complete list of dependencies. The most important version dependencies are:
+These repositories further depend on a number of python packages (which are automatically installed with borzoi). See **setup.cfg** for a complete list. The most important version dependencies are:
 - Python == 3.9
 - Tensorflow == 2.11.0
 
