@@ -1,54 +1,66 @@
-[![Build/Release Python Package](https://github.com/calico/github-template-python-library/actions/workflows/release-new-version.yml/badge.svg?branch=main)](https://github.com/calico/github-template-python-library/actions/workflows/release-new-version.yml)
-[![Python formatting and tests](https://github.com/calico/github-template-python-library/actions/workflows/run-tests-formatting.yml/badge.svg?branch=main)](https://github.com/calico/github-template-python-library/actions/workflows/run-tests-formatting.yml)
-[![Validate prettier formatting](https://github.com/calico/github-template-python-library/actions/workflows/check-prettier-formatting.yml/badge.svg?branch=main)](https://github.com/calico/github-template-python-library/actions/workflows/check-prettier-formatting.yml)
+<!---[![Build/Release Python Package](https://github.com/calico/github-template-python-library/actions/workflows/release-new-version.yml/badge.svg?branch=main)](https://github.com/calico/github-template-python-library/actions/workflows/release-new-version.yml)--->
+<!---[![Python formatting and tests](https://github.com/calico/github-template-python-library/actions/workflows/run-tests-formatting.yml/badge.svg?branch=main)](https://github.com/calico/github-template-python-library/actions/workflows/run-tests-formatting.yml)--->
+<!---[![Validate prettier formatting](https://github.com/calico/github-template-python-library/actions/workflows/check-prettier-formatting.yml/badge.svg?branch=main)](https://github.com/calico/github-template-python-library/actions/workflows/check-prettier-formatting.yml)--->
 
-# Github Template for Calico's Python Library
+# Borzoi - Predicting RNA-seq from DNA Sequence
+Code repository for training and using Borzoi models, which are convolutional neural networks trained to predict RNA-seq coverage at 32bp resolution given 524kb sequences as input. The model is described in the following bioRxiv preprint:<br/>
 
-[![code style: prettier](https://img.shields.io/badge/code_style-prettier-ff69b4.svg?style=flat-square)](https://github.com/prettier/prettier)
+[https://biorxiv.org/content/todo.1.2.3](https://biorxiv.org/content/todo.1.2.3).
 
-Create internal Python packages using this template.
+Borzoi was trained on a large set of RNA-seq experiments from ENCODE and GTEx, as well as re-processed versions of the original Enformer training data (including ChIP-seq and DNase coverage tracks from ENCODE, ATAC-seq data from CATlas, and CAGE data from FANTOM5). You can find a detailed list of trained-on (human) experiments [here](https://raw.githubusercontent.com/calico/borzoi/main/examples/targets_human.txt).
 
-## Repo setup
+The repository contains example usage code (including jupyter notebooks for predicting and visualizing genetic variants) as well as links for downloading model weights, training data, QTL benchmark tasks, etc.
 
-1. Create a new `calicolabs-{python-library-name}` Github repo using this template. The new repo name must have a `calicolabs-` prefix.
-2. Navigate to **Actions** > `Set up new Python library repo` > Run workflow. The `packageName` input cannot have spaces or hyphens. If you need to use multiple words, separate them by underscores. This name can be anything that makes sense to you. It will be what replaces the package_name folder under the src directory. For example, your input at this step will be used in importing like `from package_name.some_sub_folder.some_file import some_function` when you write your code.
-3. This will create a new PR and upon review and approval, merge into `main`. Your Python library repo is now ready to use!
+Contact *drk (at) @calicolabs.com* or *jlinder (at) @calicolabs.com* for questions about the model or data.
 
-## Additional setup
-
-### Update the following parameters in the `setup.cfg` file.
-
-Uncomment the following lines and add your package dependencies.
-Where possible, please add `~=` instead of `==`
-
-```
-;install_requires =
-;    package~=3.17.0
-;    package2~=3.15.1
+## Installation
+Borzoi depends on the [baskerville repository](https://github.com/calico/baskerville.git), which can be installed by issuing the following commands:
+```sh
+git clone https://github.com/calico/baskerville.git
+cd baskerville
+pip install -e .
 ```
 
-## Push the versioned package to Calico-PyPI (our internal repository)
+Next, install the [borzoi repository](https://github.com/calico/borzoi.git) by issuing the following commands:
+```sh
+git clone https://github.com/calico/borzoi.git
+cd borzoi
+pip install -e .
+```
 
-Note: We follow **[Semantic Versioning](https://semver.org/)** for versioning Python packages.
+The baskerville and borzoi repositories further depend on a number of python packages (which are automatically installed with borzoi). See **setup.cfg** for a complete list of dependencies. The most important version dependencies are:
+- Python == 3.9
+- Tensorflow == 2.11.0
 
-1. Navigate to **Actions** > `Build/Release Python Package` > Run workflow. This will build and push your versioned package to Calico-PyPI.
+*Note*: The example notebooks require jupyter, which can be installed with `pip install notebook`.
 
-## Formatting
+### Model Availability
+The model weights can be downloaded as .h5 files from the following URLs:
 
-### Prettier
+[Borzoi V2 Cross-fold 0](https://storage.googleapis.com/seqnn-share/borzoi/f0/model0_best.h5)<br/>
+[Borzoi V2 Cross-fold 1](https://storage.googleapis.com/seqnn-share/borzoi/f1/model0_best.h5)<br/>
+[Borzoi V2 Cross-fold 2](https://storage.googleapis.com/seqnn-share/borzoi/f2/model0_best.h5)<br/>
+[Borzoi V2 Cross-fold 3](https://storage.googleapis.com/seqnn-share/borzoi/f3/model0_best.h5)<br/>
 
-- Install and run `prettier` to maintain consistent YAML/Markdown/JSON formatting.
-  - In repo root: `npm install prettier@2.7.1`
-  - Reformat repo after changes: `npx prettier --write .`
+### Data Availability
+The training data for Borzoi can be downloaded from the following URL:
 
-### Black
+[Borzoi V2 Training Data](https://storage.googleapis.com/seqnn-share/todo.todo)<br/>
 
-- Install and run `black` to maintain consistent Python formatting.
-  - In repo root: `pip install black`
-  - Reformat repo after changes: `black .`
+*Note*: This data bucket is very large and thus set to "Requester Pays".
 
-### Ruff
+### QTL Availability
+The curated e-/s-/pa-/ipaQTL benchmarking data can be downloaded from the following URLs:
 
-- Install and run `ruff` to maintain consistent Python formatting.
-  - In repo root: `pip install ruff`
-  - Reformat repo after changes: `ruff check .`
+[eQTL Data](https://storage.googleapis.com/seqnn-share/todo.todo)<br/>
+[sQTL Data](https://storage.googleapis.com/seqnn-share/todo.todo)<br/>
+[paQTL Data](https://storage.googleapis.com/seqnn-share/todo.todo)<br/>
+[ipaQTL Data](https://storage.googleapis.com/seqnn-share/todo.todo)<br/>
+
+### Example Notebooks
+The following notebooks contain example code for predicting and interpreting genetic variants.
+
+[Notebook 1a: Interpret eQTL SNP (expression)](https://github.com/calico/borzoi/blob/main/examples/borzoi_example_eqtl_chr10_116952944_T_C.ipynb)<br/>
+[Notebook 1b: Interpret sQTL SNP (splicing)](https://github.com/calico/borzoi/blob/main/examples/borzoi_example_sqtl_chr9_135548708_G_C.ipynb)<br/>
+[Notebook 1c: Interpret paQTL SNP (polyadenylation)](https://github.com/calico/borzoi/blob/main/examples/borzoi_example_paqtl_chr1_236763042_A_G.ipynb)<br/>
+[Notebook 1d: Interpret ipaQTL SNP (splicing and polya)](https://github.com/calico/borzoi/blob/main/examples/borzoi_example_ipaqtl_chr10_116664061_G_A.ipynb)<br/>
