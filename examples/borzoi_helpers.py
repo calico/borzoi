@@ -9,7 +9,7 @@ import tensorflow as tf
 
 import baskerville
 from baskerville import seqnn
-from baskerville import dna_io
+from baskerville import dna
 
 import pysam
 
@@ -44,7 +44,7 @@ def make_seq_1hot(genome_open, chrm, start, end, seq_len):
     if len(seq_dna) < seq_len:
         seq_dna += 'N'*(seq_len-len(seq_dna))
 
-    seq_1hot = dna_io.dna_1hot(seq_dna)
+    seq_1hot = dna.dna_1hot(seq_dna)
     return seq_1hot
 
 #Predict tracks
