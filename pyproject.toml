@@ -14,7 +14,7 @@ authors = [
 ]
 readme = "README.md"
 requires-python = ">=3.8, <3.11"
-classifiers = ["License :: OSI Approved :: MIT License"]
+classifiers = ["License :: OSI Approved :: Apache License"]
 dynamic = ["version", "description"]
 
 [project.optional-dependencies]
