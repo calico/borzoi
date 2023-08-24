@@ -7,7 +7,7 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "calicolabs-borzoi"
+name = "borzoi"
 authors = [
     {name = "David Kelley", email = "drk@calicolabs.com"},
     {name = "Johannes Linder", email = "jlinder@calicolabs.com"}
