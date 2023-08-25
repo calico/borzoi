@@ -47,17 +47,17 @@ The model weights can be downloaded as .h5 files from the following URLs:
 ### Data Availability
 The training data for Borzoi can be downloaded from the following URL:
 
-[Borzoi V2 Training Data](https://storage.googleapis.com/seqnn-share/todo.todo)<br/>
+[Borzoi V2 Training Data](https://storage.googleapis.com/borzoi-paper/data/)<br/>
 
 *Note*: This data bucket is very large and thus set to "Requester Pays".
 
 ### QTL Availability
 The curated e-/s-/pa-/ipaQTL benchmarking data can be downloaded from the following URLs:
 
-[eQTL Data](https://storage.googleapis.com/seqnn-share/todo.todo)<br/>
-[sQTL Data](https://storage.googleapis.com/seqnn-share/todo.todo)<br/>
-[paQTL Data](https://storage.googleapis.com/seqnn-share/todo.todo)<br/>
-[ipaQTL Data](https://storage.googleapis.com/seqnn-share/todo.todo)<br/>
+[eQTL Data](https://storage.googleapis.com/borzoi-paper/qtl/eqtl/)<br/>
+[sQTL Data](https://storage.googleapis.com/borzoi-paper/qtl/sqtl/)<br/>
+[paQTL Data](https://storage.googleapis.com/borzoi-paper/qtl/paqtl/)<br/>
+[ipaQTL Data](https://storage.googleapis.com/borzoi-paper/qtl/ipaqtl/)<br/>
 
 ### Example Notebooks
 The following notebooks contain example code for predicting and interpreting genetic variants.
