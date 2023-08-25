@@ -34,7 +34,8 @@ These repositories further depend on a number of python packages (which are auto
 - Python == 3.9
 - Tensorflow == 2.11.0
 
-*Note*: The example notebooks require jupyter, which can be installed with `pip install notebook`.
+*Note*: The example notebooks require jupyter, which can be installed with `pip install notebook`.<br/>
+A new conda environment can be created with `conda create -n borzoi_py39 python=3.9`.
 
 ### Model Availability
 The model weights can be downloaded as .h5 files from the following URLs:
