@@ -1,0 +1,31 @@
+name: Install Requirements and Run Pytest
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "**.py"
+
+jobs:
+  validate:
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        python-version: ["3.8", "3.9", "3.10"]
+
+    steps:
+      - name: Checkout base repo
+        uses: actions/checkout@v3
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip 
+          python3 -m pip install '.[dev]'
+
+      - name: Run pytest
+        run: python -m pytest

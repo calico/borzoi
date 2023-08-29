@@ -1,0 +1,26 @@
+name: Validate Black Formatting
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "**.py"
+
+jobs:
+  format:
+    runs-on: ubuntu-20.04
+
+    steps:
+      - name: Checkout base repo
+        uses: actions/checkout@v3
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v2
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: python3 -m pip install black~=22.3.0
+
+      - name: Check Black formatting
+        run: black --check .
