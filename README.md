@@ -2,7 +2,7 @@
 <!---[![Python formatting and tests](https://github.com/calico/github-template-python-library/actions/workflows/run-tests-formatting.yml/badge.svg?branch=main)](https://github.com/calico/github-template-python-library/actions/workflows/run-tests-formatting.yml)--->
 <!---[![Validate prettier formatting](https://github.com/calico/github-template-python-library/actions/workflows/check-prettier-formatting.yml/badge.svg?branch=main)](https://github.com/calico/github-template-python-library/actions/workflows/check-prettier-formatting.yml)--->
 
-![Borzoi Logo](borzoi_logo.png?raw=true)
+<img src="borzoi_logo.png" width="200" />
 
 # Borzoi - Predicting RNA-seq from DNA Sequence
 Code repository for Borzoi models, which are convolutional neural networks trained to predict RNA-seq coverage at 32bp resolution given 524kb input sequences. The model is described in the following bioRxiv preprint:<br/>
@@ -32,7 +32,7 @@ pip install -e .
 
 These repositories further depend on a number of python packages (which are automatically installed with borzoi). See **setup.cfg** for a complete list. The most important version dependencies are:
 - Python == 3.9
-- Tensorflow == 2.11.0
+- Tensorflow == 2.12.x (see [https://www.tensorflow.org/install/pip](https://www.tensorflow.org/install/pip))
 
 *Note*: The example notebooks require jupyter, which can be installed with `pip install notebook`.<br/>
 A new conda environment can be created with `conda create -n borzoi_py39 python=3.9`.
