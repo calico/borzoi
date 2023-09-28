@@ -15,6 +15,7 @@
 	"train_epochs_max": 180
     },
     "model": {
+	"verbose": false,
         "seq_length": 524288,
         "augment_rc": true,
         "augment_shift": 3,
