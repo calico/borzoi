@@ -55,12 +55,14 @@
 		"repeat": 8
             },
 	    {
-		"name": "fpn_unet",
-		"kernel_size": 3
+		"name": "unet_conv",
+		"kernel_size": 3,
+		"upsample_conv": true
 	    },
 	    {
-		"name": "fpn_unet",
-		"kernel_size": 3
+		"name": "unet_conv",
+		"kernel_size": 3,
+		"upsample_conv": true
 	    },
             {
                 "name": "Cropping1D",
