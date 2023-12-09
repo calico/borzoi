@@ -69,6 +69,13 @@ def main():
         type="str",
         help="File specifying target indexes and labels in table format",
     )
+    parser.add_option(
+        "-u",
+        dest="untransform_old",
+        default=False,
+        action="store_true",
+        help="Untransform old models [Default: %default]",
+    )
 
     # folds
     parser.add_option(
@@ -102,7 +109,7 @@ def main():
     parser.add_option(
         "-e",
         dest="conda_env",
-        default="tf210",
+        default="tf12",
         help="Anaconda environment [Default: %default]",
     )
     parser.add_option(

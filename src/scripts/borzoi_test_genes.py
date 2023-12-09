@@ -96,6 +96,13 @@ def main():
         default=None,
         help="TFR pattern string appended to data_dir/tfrecords for subsetting [Default: %default]",
     )
+    parser.add_option(
+        "-u",
+        dest="untransform_old",
+        default=False,
+        action="store_true",
+        help="Untransform old models [Default: %default]",
+    )
     (options, args) = parser.parse_args()
 
     if len(args) != 4:
@@ -285,8 +292,12 @@ def main():
             print(gene_id, gene_targets_gi.shape, gene_preds_gi.shape)
 
         # untransform
-        gene_preds_gi = dataset.untransform_preds1(gene_preds_gi, targets_strand_df)
-        gene_targets_gi = dataset.untransform_preds1(gene_targets_gi, targets_strand_df)
+        if options.untransform_old:
+            gene_preds_gi = dataset.untransform_preds1(gene_preds_gi, targets_strand_df)
+            gene_targets_gi = dataset.untransform_preds1(gene_targets_gi, targets_strand_df)
+        else:
+            gene_preds_gi = dataset.untransform_preds(gene_preds_gi, targets_strand_df)
+            gene_targets_gi = dataset.untransform_preds(gene_targets_gi, targets_strand_df)
 
         # compute within gene correlation before dropping length axis
         gene_corr_gi = np.zeros(num_targets_strand)
@@ -329,14 +340,6 @@ def main():
     gene_targets = np.log2(gene_targets + 1)
     gene_preds = np.log2(gene_preds + 1)
 
-    # quantile and mean normalize
-    gene_targets_norm = quantile_normalize(gene_targets, ncpus=2)
-    gene_targets_norm = gene_targets_norm - gene_targets_norm.mean(
-        axis=-1, keepdims=True
-    )
-    gene_preds_norm = quantile_normalize(gene_preds, ncpus=2)
-    gene_preds_norm = gene_preds_norm - gene_preds_norm.mean(axis=-1, keepdims=True)
-
     # save values
     genes_targets_df = pd.DataFrame(
         gene_targets, index=gene_ids, columns=targets_strand_df.identifier
@@ -354,6 +357,14 @@ def main():
         gene_wvar, index=gene_ids, columns=targets_strand_df.identifier
     )
     genes_var_df.to_csv("%s/gene_var.tsv" % options.out_dir, sep="\t")
+
+    # quantile and mean normalize
+    gene_targets_norm = quantile_normalize(gene_targets, ncpus=2)
+    gene_targets_norm = gene_targets_norm - gene_targets_norm.mean(
+        axis=-1, keepdims=True
+    )
+    gene_preds_norm = quantile_normalize(gene_preds, ncpus=2)
+    gene_preds_norm = gene_preds_norm - gene_preds_norm.mean(axis=-1, keepdims=True)
 
     #######################################################
     # accuracy stats
