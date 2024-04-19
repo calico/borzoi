@@ -1,9 +1,9 @@
 ## QTL data processing
 
-The scripts in this folder are used to extract fine-mapped causal sQTLs, paQTLs and ipaQTLs from the results of the eQTL eQTL Catalogue, as well as construct distance- and expression-matched negative SNPs.<br/>
-<br/>
+The scripts in this folder are used to extract fine-mapped causal sQTLs, paQTLs and ipaQTLs from the results of the eQTL Catalogue, as well as construct distance- and expression-matched negative SNPs.<br/>
+
 *Notes*: 
-- The pipeline requires the GTEx v8 (median) TPM matrix, which can be downloaded [here](https://storage.googleapis.com/adult-gtex/bulk-gex/v8/rna-seq/GTEx_Analysis_2017-06-05_v8_RNASeQCv1.1.9_gene_median_tpm.gct.gz).<br/>
+- The pipeline requires the GTEx v8 (median) TPM matrix, which can be downloaded [here](https://storage.googleapis.com/adult-gtex/bulk-gex/v8/rna-seq/GTEx_Analysis_2017-06-05_v8_RNASeQCv1.1.9_gene_median_tpm.gct.gz).
 <br/>
 
 As a prerequisite to generating any of the QTL datasets, run the following scripts (in order):
