@@ -91,6 +91,20 @@ def main():
         help="Dataset split label for eg TFR pattern [Default: %default]",
     )
     parser.add_option(
+        '--no_unclip',
+        dest='no_unclip',
+        default=False,
+        action='store_true',
+        help='Turn off unclip transform [Default: %default]',
+    )
+    parser.add_option(
+        '--pseudo_qtl',
+        dest='pseudo_qtl',
+        default=None,
+        type='float',
+        help='Quantile of coverage to add as pseudo counts to genes [Default: %default]',
+    )
+    parser.add_option(
         "--tfr",
         dest="tfr_pattern",
         default=None,
@@ -293,11 +307,11 @@ def main():
 
         # untransform
         if options.untransform_old:
-            gene_preds_gi = dataset.untransform_preds1(gene_preds_gi, targets_strand_df)
-            gene_targets_gi = dataset.untransform_preds1(gene_targets_gi, targets_strand_df)
+            gene_preds_gi = dataset.untransform_preds1(gene_preds_gi, targets_strand_df, unclip=not options.no_unclip)
+            gene_targets_gi = dataset.untransform_preds1(gene_targets_gi, targets_strand_df, unclip=not options.no_unclip)
         else:
-            gene_preds_gi = dataset.untransform_preds(gene_preds_gi, targets_strand_df)
-            gene_targets_gi = dataset.untransform_preds(gene_targets_gi, targets_strand_df)
+            gene_preds_gi = dataset.untransform_preds(gene_preds_gi, targets_strand_df, unclip=not options.no_unclip)
+            gene_targets_gi = dataset.untransform_preds(gene_targets_gi, targets_strand_df, unclip=not options.no_unclip)
 
         # compute within gene correlation before dropping length axis
         gene_corr_gi = np.zeros(num_targets_strand)
@@ -321,8 +335,8 @@ def main():
         # np.save('%s/gene_within/%s_targets.npy' % (options.out_dir, gene_id), gene_targets_gi.astype('float16'))
 
         # mean coverage
-        gene_preds_gi = gene_preds_gi.mean(axis=0)
-        gene_targets_gi = gene_targets_gi.mean(axis=0)
+        gene_preds_gi = gene_preds_gi.mean(axis=0) / float(pool_width)
+        gene_targets_gi = gene_targets_gi.mean(axis=0) / float(pool_width)
 
         # scale by gene length
         gene_preds_gi *= gene_lengths[gene_id]
@@ -335,6 +349,17 @@ def main():
     gene_preds = np.array(gene_preds)
     gene_within = np.array(gene_within)
     gene_wvar = np.array(gene_wvar)
+
+    # add pseudo coverage
+    if options.pseudo_qtl is not None :
+        for ti in range(num_targets_strand):
+            nonzero_index = np.nonzero(gene_targets[:, ti] != 0.)[0]
+      
+            pseudo_t = np.quantile(gene_targets[:, ti][nonzero_index], q=options.pseudo_qtl)
+            pseudo_p = np.quantile(gene_preds[:, ti][nonzero_index], q=options.pseudo_qtl)
+      
+            gene_targets[:, ti] += pseudo_t
+            gene_preds[:, ti] += pseudo_p
 
     # log2 transform
     gene_targets = np.log2(gene_targets + 1)

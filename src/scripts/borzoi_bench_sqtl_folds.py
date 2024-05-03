@@ -98,6 +98,18 @@ def main():
         type="str",
         help="File specifying target indexes and labels in table format",
     )
+    sed_options.add_option(
+        '-u',
+        dest='untransform_old',
+        default=False,
+        action='store_true'
+    )
+    sed_options.add_option(
+        '--no_untransform',
+        dest='no_untransform',
+        default=False,
+        action='store_true'
+    )
     parser.add_option_group(sed_options)
 
     # classify
