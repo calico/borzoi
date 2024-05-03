@@ -45,6 +45,18 @@ The model weights can be downloaded as .h5 files from the following URLs:
 [Borzoi V2 Cross-fold 2](https://storage.googleapis.com/seqnn-share/borzoi/f2/model0_best.h5)<br/>
 [Borzoi V2 Cross-fold 3](https://storage.googleapis.com/seqnn-share/borzoi/f3/model0_best.h5)<br/>
 
+#### Mini Borzoi Models
+We have trained a collection of (smaller) model instances on various subsets of data modalities (or on all data modalities but with architectural changes compared to the original architecture). For example, some models are trained only on RNA-seq data while others are trained on DNase-, ATAC- and RNA-seq. Similarly, some model instances are trained on human-only data while others are trained on human- and mouse data. The models are available at the URL below:
+
+[Mini Borzoi Model Collection](https://storage.googleapis.com/seqnn-share/borzoi/mini/)<br/>
+
+For example, here are the weights, targets, and parameter file of a model trained on K562 RNA-seq:
+
+[Borzoi K562 RNA-seq Fold 0](https://storage.googleapis.com/seqnn-share/borzoi/mini/k562_rna/f0/model0_best.h5)<br/>
+[Borzoi K562 RNA-seq Fold 1](https://storage.googleapis.com/seqnn-share/borzoi/mini/k562_rna/f1/model0_best.h5)<br/>
+[Borzoi K562 RNA-seq Targets](https://storage.googleapis.com/seqnn-share/borzoi/mini/k562_rna/hg38/targets.txt)<br/>
+[Borzoi K562 RNA-seq Parameters](https://storage.googleapis.com/seqnn-share/borzoi/mini/k562_rna/params.json)<br/>
+
 ### Data Availability
 The training data for Borzoi can be downloaded from the following URL:
 
