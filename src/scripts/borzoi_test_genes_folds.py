@@ -70,6 +70,19 @@ def main():
         help="File specifying target indexes and labels in table format",
     )
     parser.add_option(
+        '--no_unclip',
+        dest='no_unclip',
+        default=False,
+        action='store_true',
+        help='Turn off unclip transform [Default: %default]',
+    )
+    parser.add_option(
+        '--pseudo_qtl',
+        dest='pseudo_qtl',
+        default=None, type='float',
+        help='Quantile of coverage to add as pseudo counts to genes [Default: %default]',
+    )
+    parser.add_option(
         "-u",
         dest="untransform_old",
         default=False,
@@ -245,6 +258,12 @@ def main():
                     cmd += " --rc"
                 if options.shifts:
                     cmd += " --shifts %s" % options.shifts
+                if options.no_unclip:
+                    cmd += ' --no_unclip'
+                if options.pseudo_qtl is not None:
+                    cmd += ' --pseudo_qtl %.2f' % options.pseudo_qtl
+                if options.untransform_old:
+                    cmd += ' -u'
                 if options.span:
                     cmd += " --span"
                     job_mem = 240000

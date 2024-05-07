@@ -111,7 +111,18 @@ def main():
         type="str",
         help="File specifying target indexes and labels in table format",
     )
-    parser.add_option("-u", dest="untransform_old", default=False, action="store_true")
+    parser.add_option(
+        "-u",
+        dest="untransform_old",
+        default=False,
+        action="store_true",
+    )
+    parser.add_option(
+        "--no_untransform",
+        dest="no_untransform",
+        default=False,
+        action="store_true",
+    )
     (options, args) = parser.parse_args()
 
     if len(args) == 3:
@@ -271,12 +282,13 @@ def main():
 
         # untransform predictions
         if options.targets_file is not None:
-            if options.untransform_old:
-                ref_preds = dataset.untransform_preds1(ref_preds, targets_df)
-                alt_preds = dataset.untransform_preds1(alt_preds, targets_df)
-            else:
-                ref_preds = dataset.untransform_preds(ref_preds, targets_df)
-                alt_preds = dataset.untransform_preds(alt_preds, targets_df)
+            if not options.no_untransform:
+                if options.untransform_old:
+                    ref_preds = dataset.untransform_preds1(ref_preds, targets_df)
+                    alt_preds = dataset.untransform_preds1(alt_preds, targets_df)
+                else:
+                    ref_preds = dataset.untransform_preds(ref_preds, targets_df)
+                    alt_preds = dataset.untransform_preds(alt_preds, targets_df)
 
         if options.bedgraph:
             write_bedgraph_snp(
@@ -599,29 +611,41 @@ def write_snp(ref_preds, alt_preds, sed_out, xi: int, sed_stats, pseudocounts):
     # ref/alt_preds is L x T
     seq_len, num_targets = ref_preds.shape
 
-    # sum across bins
+    # log/sqrt
+    ref_preds_log = np.log2(ref_preds+1)
+    alt_preds_log = np.log2(alt_preds+1)
+
+    # sum across length
     ref_preds_sum = ref_preds.sum(axis=0)
     alt_preds_sum = alt_preds.sum(axis=0)
 
     # difference of sums
-    if "SED" in sed_stats:
+    if 'SED' in sed_stats:
         sed = alt_preds_sum - ref_preds_sum
-        sed_out["SED"][xi] = clip_float(sed).astype("float16")
-    if "logSED" in sed_stats:
+        sed_out['SED'][xi] = clip_float(sed).astype('float16')
+    if 'logSED' in sed_stats:
         log_sed = np.log2(alt_preds_sum + 1) - np.log2(ref_preds_sum + 1)
-        sed_out["logSED"][xi] = log_sed.astype("float16")
+        sed_out['logSED'][xi] = log_sed.astype('float16')
 
     # difference L1 norm
     if "D1" in sed_stats:
         diff_abs = np.abs(ref_preds - alt_preds)
         diff_norm1 = diff_abs.sum(axis=0)
         sed_out["D1"][xi] = clip_float(diff_norm1).astype("float16")
+    if 'logD1' in sed_stats:
+        diff1_log = np.abs(ref_preds_log - alt_preds_log, 2)
+        diff_log_norm1 = diff1_log.sum(axis=0)
+        sed_out['logD1'][xi] = clip_float(diff_log_norm1).astype('float16')
 
     # difference L2 norm
-    if "D2" in sed_stats:
+    if 'D2' in sed_stats:
         diff2 = np.power(ref_preds - alt_preds, 2)
         diff_norm2 = np.sqrt(diff2.sum(axis=0))
-        sed_out["D2"][xi] = clip_float(diff_norm2).astype("float16")
+        sed_out['D2'][xi] = clip_float(diff_norm2).astype('float16')
+    if 'logD2' in sed_stats:
+        diff2_log = np.power(ref_preds_log - alt_preds_log, 2)
+        diff_log_norm2 = np.sqrt(diff2_log.sum(axis=0))
+        sed_out['logD2'][xi] = clip_float(diff_log_norm2).astype('float16')
 
     # normalized scores
     ref_preds_norm = ref_preds + pseudocounts
