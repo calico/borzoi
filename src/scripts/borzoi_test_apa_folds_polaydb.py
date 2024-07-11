@@ -67,8 +67,7 @@ def main():
         "-f",
         dest="fold_subset",
         default=None,
-        type="int",
-        help="Run a subset of folds [Default:%default]",
+        help="Run a subset of folds (encoded as comma-separated string) [Default:%default]",
     )
     parser.add_option("-g", dest="apa_file", default="polyadb_human_v3.csv.gz")
     parser.add_option(
@@ -162,10 +161,12 @@ def main():
 
     # count folds
     num_folds = len([dkey for dkey in data_stats if dkey.startswith("fold")])
+  
+    fold_index = [fold_i for fold_i in range(num_folds)]
 
     # subset folds
     if options.fold_subset is not None:
-        num_folds = min(options.fold_subset, num_folds)
+        fold_index = [int(fold_str) for fold_str in options.fold_subset.split(",")]
 
     if options.queue == "standard":
         num_cpu = 4
@@ -180,7 +181,7 @@ def main():
     jobs = []
 
     for ci in range(options.crosses):
-        for fi in range(num_folds):
+        for fi in fold_index:
             it_dir = "%s/f%dc%d" % (options.exp_dir, fi, ci)
 
             if options.dataset_i is None:

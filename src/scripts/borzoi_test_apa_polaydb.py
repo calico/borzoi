@@ -142,7 +142,10 @@ def main():
     params_train = params["train"]
 
     # set strand pairs
-    params_model["strand_pair"] = [np.array(targets_df.strand_pair)]
+    if 'strand_pair' in targets_df.columns:
+        orig_new_index = dict(zip(targets_df.index, np.arange(targets_df.shape[0])))
+        targets_strand_pair = np.array([orig_new_index[ti] for ti in targets_df.strand_pair])
+        params_model["strand_pair"] = [targets_strand_pair]
 
     # construct eval data
     eval_data = dataset.SeqDataset(
@@ -316,7 +319,7 @@ def main():
     apa_targets = np.array(apa_targets)
     apa_preds = np.array(apa_preds)
 
-    # TEMP
+    # save numpy arrays with values
     np.save("%s/apa_targets_polyadb.npy" % options.out_dir, apa_targets)
     np.save("%s/apa_preds_polyadb.npy" % options.out_dir, apa_preds)
 
@@ -324,7 +327,7 @@ def main():
     apa_targets_df = pd.DataFrame(apa_targets, index=pas_ids)
     apa_targets_df.to_csv(
         "%s/apa_targets_polyadb.tsv.gz" % options.out_dir, sep="\t"
-    )  # , index=False
+    )
     apa_preds_df = pd.DataFrame(apa_preds, index=pas_ids)
     apa_preds_df.to_csv("%s/apa_preds_polyadb.tsv.gz" % options.out_dir, sep="\t")
 
