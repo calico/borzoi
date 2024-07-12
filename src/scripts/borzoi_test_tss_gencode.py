@@ -164,7 +164,10 @@ def main():
     params_train = params['train']
 
     # set strand pairs
-    params_model['strand_pair'] = [np.array(targets_df.strand_pair)]
+    if 'strand_pair' in targets_df.columns:
+        orig_new_index = dict(zip(targets_df.index, np.arange(targets_df.shape[0])))
+        targets_strand_pair = np.array([orig_new_index[ti] for ti in targets_df.strand_pair])
+        params_model['strand_pair'] = [targets_strand_pair]
     
     # construct eval data
     eval_data = dataset.SeqDataset(data_dir,
@@ -309,7 +312,7 @@ def main():
     tss_targets = np.array(tss_targets)
     tss_preds = np.array(tss_preds)
 
-    # TEMP
+    # save numpy arrays with values
     np.save('%s/tss_targets_gencode.npy' % options.out_dir, tss_targets)
     np.save('%s/tss_preds_gencode.npy' % options.out_dir, tss_preds)
 

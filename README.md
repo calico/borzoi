@@ -38,15 +38,15 @@ These repositories further depend on a number of python packages (which are auto
 A new conda environment can be created with `conda create -n borzoi_py39 python=3.9`.
 
 ### Model Availability
-The model weights can be downloaded as .h5 files from the following URLs:
+The model weights can be downloaded as .h5 files from the URLs below. We trained a total of 4 model replicates with identical train, validation and test splits (test = fold3, validation = fold4 from [sequences_human.bed.gz](https://github.com/calico/borzoi/blob/main/data/sequences_human.bed.gz)).
 
-[Borzoi V2 Cross-fold 0](https://storage.googleapis.com/seqnn-share/borzoi/f0/model0_best.h5)<br/>
-[Borzoi V2 Cross-fold 1](https://storage.googleapis.com/seqnn-share/borzoi/f1/model0_best.h5)<br/>
-[Borzoi V2 Cross-fold 2](https://storage.googleapis.com/seqnn-share/borzoi/f2/model0_best.h5)<br/>
-[Borzoi V2 Cross-fold 3](https://storage.googleapis.com/seqnn-share/borzoi/f3/model0_best.h5)<br/>
+[Borzoi V2 Replicate 0](https://storage.googleapis.com/seqnn-share/borzoi/f0/model0_best.h5)<br/>
+[Borzoi V2 Replicate 1](https://storage.googleapis.com/seqnn-share/borzoi/f1/model0_best.h5)<br/>
+[Borzoi V2 Replicate 2](https://storage.googleapis.com/seqnn-share/borzoi/f2/model0_best.h5)<br/>
+[Borzoi V2 Replicate 3](https://storage.googleapis.com/seqnn-share/borzoi/f3/model0_best.h5)<br/>
 
 #### Mini Borzoi Models
-We have trained a collection of (smaller) model instances on various subsets of data modalities (or on all data modalities but with architectural changes compared to the original architecture). For example, some models are trained only on RNA-seq data while others are trained on DNase-, ATAC- and RNA-seq. Similarly, some model instances are trained on human-only data while others are trained on human- and mouse data. The models are available at the URL below:
+We have trained a collection of (smaller) model instances on various subsets of data modalities (or on all data modalities but with architectural changes compared to the original architecture). For example, some models are trained only on RNA-seq data while others are trained on DNase-, ATAC- and RNA-seq. Similarly, some model instances are trained on human-only data while others are trained on human- and mouse data. The models were trained with either 2- or 4-fold cross-validation and are available at the following URL:
 
 [Mini Borzoi Model Collection](https://storage.googleapis.com/seqnn-share/borzoi/mini/)<br/>
 
