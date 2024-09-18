@@ -13,40 +13,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =========================================================================
-
 from optparse import OptionParser
 import gc
 import json
-import pdb
 import os
 import time
 import sys
 
-import h5py
-#from intervaltree import IntervalTree
 import numpy as np
 import pandas as pd
 import pyranges as pr
-from scipy.stats import pearsonr
-from sklearn.metrics import explained_variance_score
-import tensorflow as tf
-#from tqdm import tqdm
 
-from basenji import bed
-from basenji import dataset
-from basenji import seqnn
-from basenji import trainer
-#import pygene
-#from qnorm import quantile_normalize
+from baskerville import dataset
+from baskerville import seqnn
 
 '''
 borzoi_test_tss_gencode.py
 
 Measure accuracy at TSS-level.
 '''
-
-def eprint(*args, **kwargs):
-    print(*args, file=sys.stderr, **kwargs)
 
 ################################################################################
 # main
@@ -113,6 +98,13 @@ def main():
         default=None,
         help='TFR pattern string appended to data_dir/tfrecords for subsetting [Default: %default]',
     )
+    parser.add_option(
+        "-u",
+        dest="untransform_old",
+        default=False,
+        action="store_true",
+        help="Untransform old models [Default: %default]",
+    )
     (options, args) = parser.parse_args()
 
     if len(args) != 4:
@@ -153,9 +145,6 @@ def main():
     # count targets
     num_targets = targets_df.shape[0]
     num_targets_strand = targets_strand_df.shape[0]
-
-    # save sqrt'd tracks
-    sqrt_mask = np.array([ss.find('sqrt') != -1 for ss in targets_strand_df.sum_stat])
 
     # read model parameters
     with open(params_file) as params_open:
@@ -203,15 +192,17 @@ def main():
     tss_df = pd.read_csv(tss_file, sep='\t', names=['Chromosome', 'Start', 'End', 'tss_id', 'feat1', 'tss_strand'])
     
     tss_pr = pr.PyRanges(tss_df)
+    
+    # get strands
+    tss_strand_dict = {}
+    for _, row in tss_df.iterrows() :
+        tss_strand_dict[row['tss_id']] = row['tss_strand']
 
     #######################################################
     # intersect TSS sites w/ preds, targets
     
     # intersect seqs, TSS sites
     seqs_tss_pr = seqs_pr.join(tss_pr)
-    
-    eprint("len(seqs_tss_pr.df) = " + str(len(seqs_tss_pr.df)))
-    print("len(seqs_tss_pr.df) = " + str(len(seqs_tss_pr.df)))
     
     # hash preds/targets by tss_id
     tss_preds_dict = {}
@@ -221,11 +212,10 @@ def main():
     for x, y in eval_data.dataset:
         # predict only if gene overlaps
         yh = None
-        y = y.numpy()[...,targets_df.index]
+        y = y.numpy()[..., targets_df.index]
 
         t0 = time.time()
-        eprint('Sequence %d...' % si)
-        print('Sequence %d...' % si, end='')
+        print('Sequence %d...' % si, end='', flush=True)
         for bsi in range(x.shape[0]):
             seq = seqs_df.iloc[si+bsi]
 
@@ -263,25 +253,21 @@ def main():
                     yh = seqnn_model(x)
 
                 # slice gene region
-                yhb = yh[bsi,bin_start:bin_end].astype('float16')
-                yb = y[bsi,bin_start:bin_end].astype('float16')
+                yhb = yh[bsi, bin_start:bin_end].astype('float16')
+                yb = y[bsi, bin_start:bin_end].astype('float16')
 
                 if len(yb) > 0:    
-                    tss_preds_dict.setdefault(tss_id,[]).append(yhb)
-                    tss_targets_dict.setdefault(tss_id,[]).append(yb)
+                    tss_preds_dict.setdefault(tss_id, []).append(yhb)
+                    tss_targets_dict.setdefault(tss_id, []).append(yb)
                 else:
-                    eprint("(Warning: len(yb) <= 0)")
+                    print("(Warning: len(yb) <= 0)", flush=True)
         
         # advance sequence table index
         si += x.shape[0]
-        eprint('DONE in %ds.' % (time.time()-t0))
-        print('DONE in %ds.' % (time.time()-t0))
-        
-        eprint("len(tss_preds_dict) = " + str(len(tss_preds_dict)))
+        print('DONE in %ds.' % (time.time() - t0), flush=True)
         
         if si % 128 == 0:
             gc.collect()
-
 
     #######################################################
     # aggregate TSS bin values into arrays
@@ -292,15 +278,25 @@ def main():
 
     for tss_id in tss_ids:
         tss_preds_gi = np.concatenate(tss_preds_dict[tss_id], axis=0).astype('float32')
-        tss_targets_gi = np.concatenate(tss_targets_dict[tss_id], axis=0).astype('float32')
+        tss_targets_gi = np.concatenate(tss_targets_dict[tss_id], axis=0).astype(
+            'float32'
+        )
+        
+        # slice strand
+        if tss_strand_dict[tss_id] == "+":
+            tss_strand_mask = (targets_df.strand != "-").to_numpy()
+        else:
+            tss_strand_mask = (targets_df.strand != "+").to_numpy()
+        tss_preds_gi = tss_preds_gi[:, tss_strand_mask]
+        tss_targets_gi = tss_targets_gi[:, tss_strand_mask]
 
-        # undo scale
-        tss_preds_gi /= np.expand_dims(targets_strand_df.scale, axis=0)
-        tss_targets_gi /= np.expand_dims(targets_strand_df.scale, axis=0)
-
-        # undo sqrt
-        tss_preds_gi[:,sqrt_mask] = tss_preds_gi[:,sqrt_mask]**(4/3)
-        tss_targets_gi[:,sqrt_mask] = tss_targets_gi[:,sqrt_mask]**(4/3)
+        # untransform
+        if options.untransform_old:
+            tss_preds_gi = dataset.untransform_preds1(tss_preds_gi, targets_strand_df, unscale=True, unclip=False)
+            tss_targets_gi = dataset.untransform_preds1(tss_targets_gi, targets_strand_df, unscale=True, unclip=False)
+        else:
+            tss_preds_gi = dataset.untransform_preds(tss_preds_gi, targets_strand_df, unscale=True, unclip=False)
+            tss_targets_gi = dataset.untransform_preds(tss_targets_gi, targets_strand_df, unscale=True, unclip=False)
 
         # mean (or max) coverage
         tss_preds_gi = tss_preds_gi.max(axis=0) if options.maxcov else tss_preds_gi.mean(axis=0)

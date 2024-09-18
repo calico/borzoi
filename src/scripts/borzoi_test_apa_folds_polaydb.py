@@ -21,6 +21,8 @@ import slurm
 
 """
 borzoi_test_apa_folds_polaydb.py
+
+Measure accuracy at polyadenylation-level for multiple model replicates.
 """
 
 ################################################################################
@@ -29,13 +31,6 @@ borzoi_test_apa_folds_polaydb.py
 def main():
     usage = "usage: %prog [options] <params_file> <data1_dir> ..."
     parser = OptionParser(usage)
-    parser.add_option(
-        "-a",
-        "--alt",
-        dest="alternative",
-        default="two-sided",
-        help="Statistical test alternative [Default: %default]",
-    )
     parser.add_option(
         "-c",
         dest="crosses",
@@ -51,13 +46,6 @@ def main():
         help="Dataset index [Default:%default]",
     )
     parser.add_option(
-        "--d_ref",
-        dest="dataset_ref_i",
-        default=None,
-        type="int",
-        help="Reference Dataset index [Default:%default]",
-    )
-    parser.add_option(
         "-e",
         dest="conda_env",
         default="tf210",
@@ -67,26 +55,19 @@ def main():
         "-f",
         dest="fold_subset",
         default=None,
+        type="int",
+        help="Run a subset of folds [Default:%default]",
+    )
+    parser.add_option(
+        "--f_list",
+        dest="fold_subset_list",
+        default=None,
         help="Run a subset of folds (encoded as comma-separated string) [Default:%default]",
     )
-    parser.add_option("-g", dest="apa_file", default="polyadb_human_v3.csv.gz")
     parser.add_option(
-        "--label_exp",
-        dest="label_exp",
-        default="Experiment",
-        help="Experiment label [Default: %default]",
-    )
-    parser.add_option(
-        "--label_ref",
-        dest="label_ref",
-        default="Reference",
-        help="Reference label [Default: %default]",
-    )
-    parser.add_option(
-        "-m",
-        dest="metric",
-        default="pearsonr",
-        help="Train/test metric [Default: Pearsonr or AUPRC]",
+        "-g",
+        dest="apa_file",
+        default="polyadb_human_v3.csv.gz"
     )
     parser.add_option(
         "--name",
@@ -101,14 +82,9 @@ def main():
         help="Output experiment directory [Default: %default]",
     )
     parser.add_option(
-        "-p", dest="out_stem", default=None, help="Output plot stem [Default: %default]"
-    )
-    parser.add_option("-q", dest="queue", default="geforce")
-    parser.add_option(
-        "-r",
-        dest="ref_dir",
-        default=None,
-        help="Reference directory for statistical tests",
+        "-q",
+        dest="queue",
+        default="geforce"
     )
     parser.add_option(
         "--rc",
@@ -125,18 +101,18 @@ def main():
         help="Ensemble prediction shifts [Default: %default]",
     )
     parser.add_option(
-        "--status",
-        dest="status",
-        default=False,
-        action="store_true",
-        help="Update metric status; do not run jobs [Default: %default]",
-    )
-    parser.add_option(
         "-t",
         dest="targets_file",
         default=None,
         type="str",
         help="File specifying target indexes and labels in table format",
+    )
+    parser.add_option(
+        "-u",
+        dest="untransform_old",
+        default=False,
+        action="store_true",
+        help="Untransform old models [Default: %default]",
     )
     (options, args) = parser.parse_args()
 
@@ -161,12 +137,16 @@ def main():
 
     # count folds
     num_folds = len([dkey for dkey in data_stats if dkey.startswith("fold")])
-  
-    fold_index = [fold_i for fold_i in range(num_folds)]
 
     # subset folds
     if options.fold_subset is not None:
-        fold_index = [int(fold_str) for fold_str in options.fold_subset.split(",")]
+        num_folds = min(options.fold_subset, num_folds)
+  
+    fold_index = [fold_i for fold_i in range(num_folds)]
+
+    # subset folds (list)
+    if options.fold_subset_list is not None:
+        fold_index = [int(fold_str) for fold_str in options.fold_subset_list.split(",")]
 
     if options.queue == "standard":
         num_cpu = 4
@@ -192,7 +172,7 @@ def main():
                 model_file = "%s/train/model%d_best.h5" % (it_dir, options.dataset_i)
 
             # check if done
-            acc_file = "%s/acc.txt" % out_dir
+            acc_file = "%s/apa_preds_polyadb.tsv.gz" % out_dir
             if os.path.isfile(acc_file):
                 # print('%s already generated.' % acc_file)
                 pass
@@ -209,6 +189,8 @@ def main():
                     cmd += " --shifts %s" % options.shifts
                 if options.targets_file is not None:
                     cmd += " -t %s" % options.targets_file
+                if options.untransform_old:
+                    cmd += " -u"
                 cmd += " %s" % params_file
                 cmd += " %s" % model_file
                 cmd += " %s/data%d" % (it_dir, head_i)

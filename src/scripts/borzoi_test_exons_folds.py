@@ -95,6 +95,12 @@ def main():
         help="Run a subset of folds [Default:%default]",
     )
     parser.add_option(
+        "--f_list",
+        dest="fold_subset_list",
+        default=None,
+        help="Run a subset of folds (encoded as comma-separated string) [Default:%default]",
+    )
+    parser.add_option(
         "-g",
         dest="exons_gff",
         default="%s/genes/gencode41/gencode41_basic_nort_protein_exons.gff"
@@ -195,6 +201,12 @@ def main():
     # subset folds
     if options.fold_subset is not None:
         num_folds = min(options.fold_subset, num_folds)
+  
+    fold_index = [fold_i for fold_i in range(num_folds)]
+
+    # subset folds (list)
+    if options.fold_subset_list is not None:
+        fold_index = [int(fold_str) for fold_str in options.fold_subset_list.split(",")]
 
     if options.queue == "standard":
         num_cpu = 4
@@ -209,7 +221,7 @@ def main():
     jobs = []
 
     for ci in range(options.crosses):
-        for fi in range(num_folds):
+        for fi in fold_index:
             it_dir = "%s/f%dc%d" % (options.exp_dir, fi, ci)
 
             if options.dataset_i is None:

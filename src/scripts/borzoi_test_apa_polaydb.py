@@ -33,11 +33,6 @@ borzoi_test_apa_polaydb.py
 Measure accuracy at polyadenylation-level.
 """
 
-
-def eprint(*args, **kwargs):
-    print(*args, file=sys.stderr, **kwargs)
-
-
 ################################################################################
 # main
 ################################################################################
@@ -89,6 +84,13 @@ def main():
         default=None,
         help="TFR pattern string appended to data_dir/tfrecords for subsetting [Default: %default]",
     )
+    parser.add_option(
+        "-u",
+        dest="untransform_old",
+        default=False,
+        action="store_true",
+        help="Untransform old models [Default: %default]",
+    )
     (options, args) = parser.parse_args()
 
     if len(args) != 4:
@@ -131,9 +133,6 @@ def main():
     # count targets
     num_targets = targets_df.shape[0]
     num_targets_strand = targets_strand_df.shape[0]
-
-    # save sqrt'd tracks
-    sqrt_mask = np.array([ss.find("sqrt") != -1 for ss in targets_strand_df.sum_stat])
 
     # read model parameters
     with open(params_file) as params_open:
@@ -188,9 +187,6 @@ def main():
     # filter for 3' UTR polyA sites only
     apa_df = apa_df.query("site_type == '3\\' most exon'").copy().reset_index(drop=True)
 
-    eprint("len(apa_df) = " + str(len(apa_df)))
-    print("len(apa_df) = " + str(len(apa_df)))
-
     apa_df["start_hg38"] = apa_df["position_hg38"]
     apa_df["end_hg38"] = apa_df["position_hg38"] + 1
 
@@ -207,15 +203,17 @@ def main():
     apa_pr = pr.PyRanges(
         apa_df[["Chromosome", "Start", "End", "pas_id", "cut_mode", "pas_strand"]]
     )
+    
+    # get strands
+    pas_strand_dict = {}
+    for _, row in apa_df.iterrows() :
+        pas_strand_dict[row['pas_id']] = row['pas_strand']
 
     #######################################################
     # intersect APA sites w/ preds, targets
 
     # intersect seqs, APA sites
     seqs_apa_pr = seqs_pr.join(apa_pr)
-
-    eprint("len(seqs_apa_pr.df) = " + str(len(seqs_apa_pr.df)))
-    print("len(seqs_apa_pr.df) = " + str(len(seqs_apa_pr.df)))
 
     # hash preds/targets by pas_id
     apa_preds_dict = {}
@@ -228,8 +226,7 @@ def main():
         y = y.numpy()[..., targets_df.index]
 
         t0 = time.time()
-        eprint("Sequence %d..." % si)
-        print("Sequence %d..." % si, end="")
+        print("Sequence %d..." % si, end="", flush=True)
         for bsi in range(x.shape[0]):
             seq = seqs_df.iloc[si + bsi]
 
@@ -276,14 +273,11 @@ def main():
                     apa_preds_dict.setdefault(pas_id, []).append(yhb)
                     apa_targets_dict.setdefault(pas_id, []).append(yb)
                 else:
-                    eprint("(Warning: len(yb) <= 0)")
+                    print("(Warning: len(yb) <= 0)", flush=True)
 
         # advance sequence table index
         si += x.shape[0]
-        eprint("DONE in %ds." % (time.time() - t0))
-        print("DONE in %ds." % (time.time() - t0))
-
-        eprint("len(apa_preds_dict) = " + str(len(apa_preds_dict)))
+        print("DONE in %ds." % (time.time() - t0), flush=True)
 
         if si % 128 == 0:
             gc.collect()
@@ -300,14 +294,22 @@ def main():
         apa_targets_gi = np.concatenate(apa_targets_dict[pas_id], axis=0).astype(
             "float32"
         )
+        
+        # slice strand
+        if pas_strand_dict[pas_id] == "+":
+            pas_strand_mask = (targets_df.strand != "-").to_numpy()
+        else:
+            pas_strand_mask = (targets_df.strand != "+").to_numpy()
+        apa_preds_gi = apa_preds_gi[:, pas_strand_mask]
+        apa_targets_gi = apa_targets_gi[:, pas_strand_mask]
 
-        # undo scale
-        apa_preds_gi /= np.expand_dims(targets_strand_df.scale, axis=0)
-        apa_targets_gi /= np.expand_dims(targets_strand_df.scale, axis=0)
-
-        # undo sqrt
-        apa_preds_gi[:, sqrt_mask] = apa_preds_gi[:, sqrt_mask] ** (4 / 3)
-        apa_targets_gi[:, sqrt_mask] = apa_targets_gi[:, sqrt_mask] ** (4 / 3)
+        # untransform
+        if options.untransform_old:
+            apa_preds_gi = dataset.untransform_preds1(apa_preds_gi, targets_strand_df, unscale=True, unclip=False)
+            apa_targets_gi = dataset.untransform_preds1(apa_targets_gi, targets_strand_df, unscale=True, unclip=False)
+        else:
+            apa_preds_gi = dataset.untransform_preds(apa_preds_gi, targets_strand_df, unscale=True, unclip=False)
+            apa_targets_gi = dataset.untransform_preds(apa_targets_gi, targets_strand_df, unscale=True, unclip=False)
 
         # mean coverage
         apa_preds_gi = apa_preds_gi.mean(axis=0)
