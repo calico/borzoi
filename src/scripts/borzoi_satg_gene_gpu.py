@@ -60,8 +60,8 @@ def main():
     parser.add_option(
         "--rc",
         dest="rc",
-        default=0,
-        type="int",
+        default=False,
+        action="store_true",
         help="Ensemble forward and reverse complement predictions [Default: %default]",
     )
     parser.add_option(
@@ -69,7 +69,21 @@ def main():
         dest="folds",
         default="0",
         type="str",
-        help="Model folds to use in ensemble [Default: %default]",
+        help="Model folds to use in ensemble (comma-separated list) [Default: %default]",
+    )
+    parser.add_option(
+        '-c',
+        dest='crosses',
+        default=1,
+        type='int',
+        help='Number of cross-fold rounds [Default:%default]',
+    )
+    parser.add_option(
+        "--head",
+        dest="head_i",
+        default=0,
+        type="int",
+        help="Model head index [Default: %default]",
     )
     parser.add_option(
         "--shifts",
@@ -81,30 +95,9 @@ def main():
     parser.add_option(
         "--span",
         dest="span",
-        default=0,
-        type="int",
+        default=False,
+        action="store_true",
         help="Aggregate entire gene span [Default: %default]",
-    )
-    parser.add_option(
-        "--smoothgrad",
-        dest="smooth_grad",
-        default=0,
-        type="int",
-        help="Run smoothgrad [Default: %default]",
-    )
-    parser.add_option(
-        "--samples",
-        dest="n_samples",
-        default=5,
-        type="int",
-        help="Number of smoothgrad samples [Default: %default]",
-    )
-    parser.add_option(
-        "--sampleprob",
-        dest="sample_prob",
-        default=0.875,
-        type="float",
-        help="Probability of not mutating a position in smoothgrad [Default: %default]",
     )
     parser.add_option(
         "--clip_soft",
@@ -114,17 +107,38 @@ def main():
         help="Model clip_soft setting [Default: %default]",
     )
     parser.add_option(
-        "--no_transform",
-        dest="no_transform",
-        default=0,
-        type="int",
+        "--track_scale",
+        dest="track_scale",
+        default=0.02,
+        type="float",
+        help="Target transform scale [Default: %default]",
+    )
+    parser.add_option(
+        "--track_transform",
+        dest="track_transform",
+        default=0.75,
+        type="float",
+        help="Target transform exponent [Default: %default]",
+    )
+    parser.add_option(
+        "--untransform_old",
+        dest="untransform_old",
+        default=False,
+        action="store_true",
+        help="Run gradients with old version of inverse transforms [Default: %default]",
+    )
+    parser.add_option(
+        "--no_untransform",
+        dest="no_untransform",
+        default=False,
+        action="store_true",
         help="Run gradients with no inverse transforms [Default: %default]",
     )
     parser.add_option(
         "--get_preds",
         dest="get_preds",
-        default=0,
-        type="int",
+        default=False,
+        action="store_true",
         help="Store scalar predictions in addition to their gradients [Default: %default]",
     )
     parser.add_option(
@@ -214,7 +228,10 @@ def main():
     # load first model fold to get parameters
 
     seqnn_model = seqnn.SeqNN(params_model)
-    seqnn_model.restore(model_folder + "/f0c0/model0_best.h5", 0, by_name=False)
+    seqnn_model.restore(
+        model_folder + "/f" + str(options.folds[0]) + "c0/train/model" + str(options.head_i) + "_best.h5",
+        options.head_i
+    )
     seqnn_model.build_slice(targets_df.index, False)
     # seqnn_model.build_ensemble(options.rc, options.shifts)
 
@@ -265,50 +282,215 @@ def main():
 
     # loop over folds
     for fold_ix in options.folds:
-        print("-- Fold = " + str(fold_ix) + " --")
+        for cross_ix in options.crosses:
+            
+            print("-- fold = f" + str(fold_ix) + "c" + str(cross_ix) + " --")
 
-        # (re-)initialize HDF5
-        scores_h5_file = "%s/scores_f%dc0.h5" % (options.out_dir, fold_ix)
-        if os.path.isfile(scores_h5_file):
-            os.remove(scores_h5_file)
-        scores_h5 = h5py.File(scores_h5_file, "w")
-        scores_h5.create_dataset("seqs", dtype="bool", shape=(num_genes, seq_len, 4))
-        scores_h5.create_dataset(
-            "grads", dtype="float16", shape=(num_genes, seq_len, 4, num_targets)
-        )
-        if options.get_preds == 1:
+            # (re-)initialize HDF5
+            scores_h5_file = "%s/scores_f%dc%d.h5" % (options.out_dir, fold_ix, cross_ix)
+            if os.path.isfile(scores_h5_file):
+                os.remove(scores_h5_file)
+            scores_h5 = h5py.File(scores_h5_file, "w")
+            scores_h5.create_dataset("seqs", dtype="bool", shape=(num_genes, seq_len, 4))
             scores_h5.create_dataset(
-                "preds", dtype="float32", shape=(num_genes, num_targets)
+                "grads", dtype="float16", shape=(num_genes, seq_len, 4, num_targets)
             )
-        scores_h5.create_dataset("gene", data=np.array(gene_list, dtype="S"))
-        scores_h5.create_dataset("chr", data=np.array(genes_chr, dtype="S"))
-        scores_h5.create_dataset("start", data=np.array(genes_start))
-        scores_h5.create_dataset("end", data=np.array(genes_end))
-        scores_h5.create_dataset("strand", data=np.array(genes_strand, dtype="S"))
+            if options.get_preds:
+                scores_h5.create_dataset(
+                    "preds", dtype="float32", shape=(num_genes, num_targets)
+                )
+            scores_h5.create_dataset("gene", data=np.array(gene_list, dtype="S"))
+            scores_h5.create_dataset("chr", data=np.array(genes_chr, dtype="S"))
+            scores_h5.create_dataset("start", data=np.array(genes_start))
+            scores_h5.create_dataset("end", data=np.array(genes_end))
+            scores_h5.create_dataset("strand", data=np.array(genes_strand, dtype="S"))
 
-        # load model fold
-        seqnn_model = seqnn.SeqNN(params_model)
-        seqnn_model.restore(
-            model_folder + "/f" + str(fold_ix) + "c0/model0_best.h5", 0, by_name=False
-        )
-        seqnn_model.build_slice(targets_df.index, False)
+            # load model fold
+            seqnn_model = seqnn.SeqNN(params_model)
+            seqnn_model.restore(
+                model_folder + "/f" + str(fold_ix) + "c" + str(cross_ix) + "/train/model" + str(options.head_i) + "_best.h5",
+                options.head_i
+            )
+            seqnn_model.build_slice(targets_df.index, False)
 
-        track_scale = targets_df.iloc[0]["scale"]
-        track_transform = 3.0 / 4.0
+            # optionally get (and store) scalar predictions before computing their gradients
+            if options.get_preds:
+                print(" - (prediction) - ", flush=True)
 
-        # optionally get (and store) scalar predictions before computing their gradients
-        if options.get_preds == 1:
-            print(" - (prediction) - ", flush=True)
+                for shift in options.shifts:
+                    print("Processing shift %d" % shift, flush=True)
+
+                    for rev_comp in [False, True] if options.rc else [False]:
+
+                        if options.rc:
+                            print(
+                                "Fwd/rev = %s" % ("fwd" if not rev_comp else "rev"),
+                                flush=True,
+                            )
+
+                        seq_1hots = []
+                        gene_slices = []
+                        gene_targets = []
+
+                        for gi, gene_id in enumerate(gene_list):
+
+                            if gi % 500 == 0:
+                                print("Processing %d, %s" % (gi, gene_id), flush=True)
+
+                            gene = transcriptome.genes[gene_id]
+
+                            # make sequence
+                            seq_1hot = make_seq_1hot(
+                                genome_open,
+                                genes_chr[gi],
+                                genes_start[gi],
+                                genes_end[gi],
+                                seq_len,
+                            )
+                            seq_1hot = dna_io.hot1_augment(seq_1hot, shift=shift)
+
+                            # determine output sequence start
+                            seq_out_start = genes_start[gi] + model_stride * model_crop
+                            seq_out_len = model_stride * target_length
+
+                            # determine output positions
+                            gene_slice = gene.output_slice(
+                                seq_out_start, seq_out_len, model_stride, options.span
+                            )
+
+                            if rev_comp:
+                                seq_1hot = dna_io.hot1_rc(seq_1hot)
+                                gene_slice = target_length - gene_slice - 1
+
+                            # slice relevant strand targets
+                            if genes_strand[gi] == "+":
+                                gene_strand_mask = (
+                                    (targets_df.strand != "-")
+                                    if not rev_comp
+                                    else (targets_df.strand != "+")
+                                )
+                            else:
+                                gene_strand_mask = (
+                                    (targets_df.strand != "+")
+                                    if not rev_comp
+                                    else (targets_df.strand != "-")
+                                )
+
+                            gene_target = np.array(
+                                targets_df.index[gene_strand_mask].values
+                            )
+
+                            # accumulate data tensors
+                            seq_1hots.append(seq_1hot[None, ...])
+                            gene_slices.append(gene_slice[None, ...])
+                            gene_targets.append(gene_target[None, ...])
+
+                            if gi == len(gene_list) - 1 or len(seq_1hots) >= buffer_size:
+
+                                # concat sequences
+                                seq_1hots = np.concatenate(seq_1hots, axis=0)
+
+                                # pad gene slices to same length (mark valid positions in mask tensor)
+                                max_slice_len = int(
+                                    np.max(
+                                        [gene_slice.shape[1] for gene_slice in gene_slices]
+                                    )
+                                )
+
+                                gene_masks = np.zeros(
+                                    (len(gene_slices), max_slice_len), dtype="float32"
+                                )
+                                gene_slices_padded = np.zeros(
+                                    (len(gene_slices), max_slice_len), dtype="int32"
+                                )
+                                for gii, gene_slice in enumerate(gene_slices):
+                                    for j in range(gene_slice.shape[1]):
+                                        gene_masks[gii, j] = 1.0
+                                        gene_slices_padded[gii, j] = gene_slice[0, j]
+
+                                gene_slices = gene_slices_padded
+
+                                # concat gene-specific targets
+                                gene_targets = np.concatenate(gene_targets, axis=0)
+
+                                # batch call count predictions
+                                preds = predict_counts(
+                                    seqnn_model,
+                                    seq_1hots,
+                                    head_i=0,
+                                    target_slice=gene_targets,
+                                    pos_slice=gene_slices,
+                                    pos_mask=gene_masks,
+                                    chunk_size=buffer_size,
+                                    batch_size=1,
+                                    track_scale=options.track_scale,
+                                    track_transform=options.track_transform,
+                                    clip_soft=options.clip_soft,
+                                    untransform_old=options.untransform_old,
+                                    use_mean=False,
+                                    dtype="float32",
+                                )
+
+                                # save predictions
+                                for gii, gene_slice in enumerate(gene_slices):
+                                    h5_gi = (gi // buffer_size) * buffer_size + gii
+
+                                    # write to HDF5
+                                    scores_h5["preds"][h5_gi, :] += preds[gii] / float(
+                                        len(options.shifts)
+                                    )
+
+                                # clear sequence buffer
+                                seq_1hots = []
+                                gene_slices = []
+                                gene_targets = []
+
+                                # collect garbage
+                                gc.collect()
+
+            # optionally set pseudo count from predictions
+            pseudo_count = 0.0
+            if options.pseudo_qtl is not None:
+                gene_preds = scores_h5["preds"][:]
+
+                # filter on tissue
+                tissue_preds = None
+
+                if tissue_genes is not None:
+                    tissue_set = set(tissue_genes)
+
+                    # get subset of genes and predictions belonging to the pseudo count tissue
+                    tissue_preds = []
+                    for gi, gene_id in enumerate(gene_list):
+                        if gene_id.split(".")[0] in tissue_set:
+                            tissue_preds.append(gene_preds[gi, 0])
+
+                    tissue_preds = np.array(tissue_preds, dtype="float32")
+                else:
+                    tissue_preds = np.array(gene_preds[:, 0], dtype="float32")
+
+                print("tissue_preds.shape[0] = " + str(tissue_preds.shape[0]))
+
+                print("np.min(tissue_preds) = " + str(np.min(tissue_preds)))
+                print("np.max(tissue_preds) = " + str(np.max(tissue_preds)))
+
+                # set pseudo count based on quantile of predictions
+                pseudo_count = np.quantile(tissue_preds, q=options.pseudo_qtl)
+
+                print("")
+                print("pseudo_count = " + str(round(pseudo_count, 6)))
+
+            # compute gradients
+            print(" - (gradients) - ", flush=True)
 
             for shift in options.shifts:
                 print("Processing shift %d" % shift, flush=True)
 
-                for rev_comp in [False, True] if options.rc == 1 else [False]:
+                for rev_comp in [False, True] if options.rc else [False]:
 
-                    if options.rc == 1:
+                    if options.rc:
                         print(
-                            "Fwd/rev = %s" % ("fwd" if not rev_comp else "rev"),
-                            flush=True,
+                            "Fwd/rev = %s" % ("fwd" if not rev_comp else "rev"), flush=True
                         )
 
                     seq_1hots = []
@@ -338,7 +520,7 @@ def main():
 
                         # determine output positions
                         gene_slice = gene.output_slice(
-                            seq_out_start, seq_out_len, model_stride, options.span == 1
+                            seq_out_start, seq_out_len, model_stride, options.span
                         )
 
                         if rev_comp:
@@ -359,9 +541,7 @@ def main():
                                 else (targets_df.strand != "-")
                             )
 
-                        gene_target = np.array(
-                            targets_df.index[gene_strand_mask].values
-                        )
+                        gene_target = np.array(targets_df.index[gene_strand_mask].values)
 
                         # accumulate data tensors
                         seq_1hots.append(seq_1hot[None, ...])
@@ -375,9 +555,7 @@ def main():
 
                             # pad gene slices to same length (mark valid positions in mask tensor)
                             max_slice_len = int(
-                                np.max(
-                                    [gene_slice.shape[1] for gene_slice in gene_slices]
-                                )
+                                np.max([gene_slice.shape[1] for gene_slice in gene_slices])
                             )
 
                             gene_masks = np.zeros(
@@ -396,9 +574,8 @@ def main():
                             # concat gene-specific targets
                             gene_targets = np.concatenate(gene_targets, axis=0)
 
-                            # batch call count predictions
-                            preds = predict_counts(
-                                seqnn_model,
+                            # batch call gradient computation
+                            grads = seqnn_model.gradients(
                                 seq_1hots,
                                 head_i=0,
                                 target_slice=gene_targets,
@@ -406,21 +583,32 @@ def main():
                                 pos_mask=gene_masks,
                                 chunk_size=buffer_size,
                                 batch_size=1,
-                                track_scale=track_scale,
-                                track_transform=track_transform,
+                                track_scale=options.track_scale,
+                                track_transform=options.track_transform,
                                 clip_soft=options.clip_soft,
+                                pseudo_count=pseudo_count,
+                                untransform_old=options.untransform_old,
+                                no_untransform=options.no_untransform,
                                 use_mean=False,
-                                dtype="float32",
+                                use_ratio=False,
+                                use_logodds=False,
+                                subtract_avg=True,
+                                input_gate=False,
+                                dtype="float16",
                             )
 
-                            # save predictions
+                            # undo augmentations and save gradients
                             for gii, gene_slice in enumerate(gene_slices):
+                                grad = unaugment_grads(
+                                    grads[gii, :, :, None],
+                                    fwdrc=(not rev_comp),
+                                    shift=shift,
+                                )
+
                                 h5_gi = (gi // buffer_size) * buffer_size + gii
 
                                 # write to HDF5
-                                scores_h5["preds"][h5_gi, :] += preds[gii] / float(
-                                    len(options.shifts)
-                                )
+                                scores_h5["grads"][h5_gi] += grad
 
                             # clear sequence buffer
                             seq_1hots = []
@@ -430,196 +618,22 @@ def main():
                             # collect garbage
                             gc.collect()
 
-        # optionally set pseudo count from predictions
-        pseudo_count = 0.0
-        if options.pseudo_qtl is not None:
-            gene_preds = scores_h5["preds"][:]
+            # save sequences and normalize gradients by total size of ensemble
+            for gi, gene_id in enumerate(gene_list):
 
-            # filter on tissue
-            tissue_preds = None
+                # re-make original sequence
+                seq_1hot = make_seq_1hot(
+                    genome_open, genes_chr[gi], genes_start[gi], genes_end[gi], seq_len
+                )
 
-            if tissue_genes is not None:
-                tissue_set = set(tissue_genes)
+                # write to HDF5
+                scores_h5["seqs"][gi] = seq_1hot
+                scores_h5["grads"][gi] /= float(
+                    (len(options.shifts) * (2 if options.rc else 1))
+                )
 
-                # get subset of genes and predictions belonging to the pseudo count tissue
-                tissue_preds = []
-                for gi, gene_id in enumerate(gene_list):
-                    if gene_id.split(".")[0] in tissue_set:
-                        tissue_preds.append(gene_preds[gi, 0])
-
-                tissue_preds = np.array(tissue_preds, dtype="float32")
-            else:
-                tissue_preds = np.array(gene_preds[:, 0], dtype="float32")
-
-            print("tissue_preds.shape[0] = " + str(tissue_preds.shape[0]))
-
-            print("np.min(tissue_preds) = " + str(np.min(tissue_preds)))
-            print("np.max(tissue_preds) = " + str(np.max(tissue_preds)))
-
-            # set pseudo count based on quantile of predictions
-            pseudo_count = np.quantile(tissue_preds, q=options.pseudo_qtl)
-
-            print("")
-            print("pseudo_count = " + str(round(pseudo_count, 6)))
-
-        # compute gradients
-        print(" - (gradients) - ", flush=True)
-
-        for shift in options.shifts:
-            print("Processing shift %d" % shift, flush=True)
-
-            for rev_comp in [False, True] if options.rc == 1 else [False]:
-
-                if options.rc == 1:
-                    print(
-                        "Fwd/rev = %s" % ("fwd" if not rev_comp else "rev"), flush=True
-                    )
-
-                seq_1hots = []
-                gene_slices = []
-                gene_targets = []
-
-                for gi, gene_id in enumerate(gene_list):
-
-                    if gi % 500 == 0:
-                        print("Processing %d, %s" % (gi, gene_id), flush=True)
-
-                    gene = transcriptome.genes[gene_id]
-
-                    # make sequence
-                    seq_1hot = make_seq_1hot(
-                        genome_open,
-                        genes_chr[gi],
-                        genes_start[gi],
-                        genes_end[gi],
-                        seq_len,
-                    )
-                    seq_1hot = dna_io.hot1_augment(seq_1hot, shift=shift)
-
-                    # determine output sequence start
-                    seq_out_start = genes_start[gi] + model_stride * model_crop
-                    seq_out_len = model_stride * target_length
-
-                    # determine output positions
-                    gene_slice = gene.output_slice(
-                        seq_out_start, seq_out_len, model_stride, options.span == 1
-                    )
-
-                    if rev_comp:
-                        seq_1hot = dna_io.hot1_rc(seq_1hot)
-                        gene_slice = target_length - gene_slice - 1
-
-                    # slice relevant strand targets
-                    if genes_strand[gi] == "+":
-                        gene_strand_mask = (
-                            (targets_df.strand != "-")
-                            if not rev_comp
-                            else (targets_df.strand != "+")
-                        )
-                    else:
-                        gene_strand_mask = (
-                            (targets_df.strand != "+")
-                            if not rev_comp
-                            else (targets_df.strand != "-")
-                        )
-
-                    gene_target = np.array(targets_df.index[gene_strand_mask].values)
-
-                    # accumulate data tensors
-                    seq_1hots.append(seq_1hot[None, ...])
-                    gene_slices.append(gene_slice[None, ...])
-                    gene_targets.append(gene_target[None, ...])
-
-                    if gi == len(gene_list) - 1 or len(seq_1hots) >= buffer_size:
-
-                        # concat sequences
-                        seq_1hots = np.concatenate(seq_1hots, axis=0)
-
-                        # pad gene slices to same length (mark valid positions in mask tensor)
-                        max_slice_len = int(
-                            np.max([gene_slice.shape[1] for gene_slice in gene_slices])
-                        )
-
-                        gene_masks = np.zeros(
-                            (len(gene_slices), max_slice_len), dtype="float32"
-                        )
-                        gene_slices_padded = np.zeros(
-                            (len(gene_slices), max_slice_len), dtype="int32"
-                        )
-                        for gii, gene_slice in enumerate(gene_slices):
-                            for j in range(gene_slice.shape[1]):
-                                gene_masks[gii, j] = 1.0
-                                gene_slices_padded[gii, j] = gene_slice[0, j]
-
-                        gene_slices = gene_slices_padded
-
-                        # concat gene-specific targets
-                        gene_targets = np.concatenate(gene_targets, axis=0)
-
-                        # batch call gradient computation
-                        grads = seqnn_model.gradients(
-                            seq_1hots,
-                            head_i=0,
-                            target_slice=gene_targets,
-                            pos_slice=gene_slices,
-                            pos_mask=gene_masks,
-                            chunk_size=buffer_size
-                            if options.smooth_grad != 1
-                            else buffer_size // options.n_samples,
-                            batch_size=1,
-                            track_scale=track_scale,
-                            track_transform=track_transform,
-                            clip_soft=options.clip_soft,
-                            pseudo_count=pseudo_count,
-                            no_transform=options.no_transform == 1,
-                            use_mean=False,
-                            use_ratio=False,
-                            use_logodds=False,
-                            subtract_avg=True,
-                            input_gate=False,
-                            smooth_grad=options.smooth_grad == 1,
-                            n_samples=options.n_samples,
-                            sample_prob=options.sample_prob,
-                            dtype="float16",
-                        )
-
-                        # undo augmentations and save gradients
-                        for gii, gene_slice in enumerate(gene_slices):
-                            grad = unaugment_grads(
-                                grads[gii, :, :, None],
-                                fwdrc=(not rev_comp),
-                                shift=shift,
-                            )
-
-                            h5_gi = (gi // buffer_size) * buffer_size + gii
-
-                            # write to HDF5
-                            scores_h5["grads"][h5_gi] += grad
-
-                        # clear sequence buffer
-                        seq_1hots = []
-                        gene_slices = []
-                        gene_targets = []
-
-                        # collect garbage
-                        gc.collect()
-
-        # save sequences and normalize gradients by total size of ensemble
-        for gi, gene_id in enumerate(gene_list):
-
-            # re-make original sequence
-            seq_1hot = make_seq_1hot(
-                genome_open, genes_chr[gi], genes_start[gi], genes_end[gi], seq_len
-            )
-
-            # write to HDF5
-            scores_h5["seqs"][gi] = seq_1hot
-            scores_h5["grads"][gi] /= float(
-                (len(options.shifts) * (2 if options.rc == 1 else 1))
-            )
-
-        # collect garbage
-        gc.collect()
+            # collect garbage
+            gc.collect()
 
     # close files
     genome_open.close()
@@ -682,6 +696,7 @@ def _count_func(
     track_scale=1.0,
     track_transform=1.0,
     clip_soft=None,
+    untransform_old=False,
     use_mean=False,
 ):
 
@@ -690,16 +705,31 @@ def _count_func(
         model(seq_1hot, training=False), target_slice, axis=-1, batch_dims=1
     )
 
-    # undo scale
-    preds = preds / track_scale
+    if untransform_old:
+        # undo scale
+        preds = preds / track_scale
 
-    # undo soft_clip
-    if clip_soft is not None:
-        preds = tf.where(preds > clip_soft, (preds - clip_soft) ** 2 + clip_soft, preds)
+        # undo clip_soft
+        if clip_soft is not None:
+            preds = tf.where(
+                preds > clip_soft, (preds - clip_soft) ** 2 + clip_soft, preds
+            )
 
-    # undo sqrt
-    preds = preds ** (1.0 / track_transform)
+        # undo sqrt
+        preds = preds ** (1. / track_transform)
+    else:
+        # undo clip_soft
+        if clip_soft is not None:
+            preds = tf.where(
+                preds > clip_soft, (preds - clip_soft + 1) ** 2 + clip_soft - 1, preds
+            )
 
+        # undo sqrt
+        preds = -1 + (preds + 1) ** (1. / track_transform)
+
+        # scale
+        preds = preds / track_scale
+    
     # aggregate over tracks (average)
     preds = tf.reduce_mean(preds, axis=-1)
 
@@ -735,6 +765,7 @@ def predict_counts(
     track_scale=1.0,
     track_transform=1.0,
     clip_soft=None,
+    untransform_old=False,
     use_mean=False,
     dtype="float32",
 ):
@@ -840,6 +871,7 @@ def predict_counts(
                     track_scale,
                     track_transform,
                     clip_soft,
+                    untransform_old,
                     use_mean,
                 )
                 .numpy()

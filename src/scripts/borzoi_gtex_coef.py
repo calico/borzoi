@@ -18,7 +18,7 @@ import seaborn as sns
 borzoi_gtex_coef.py
 
 Evaluate concordance of variant effect prediction sign classifcation
-and coefficient correlations.
+and coefficient correlations (gene-specific).
 '''
 
 ################################################################################
@@ -57,7 +57,7 @@ def main():
     parser.add_option(
         '-s',
         dest='snp_stat',
-        default='logSAD',
+        default='logSED',
         help='SNP statistic. [Default: %(default)s]',
     )
     parser.add_option(

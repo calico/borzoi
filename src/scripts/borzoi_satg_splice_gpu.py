@@ -56,8 +56,8 @@ def main():
     parser.add_option(
         "--rc",
         dest="rc",
-        default=0,
-        type="int",
+        default=False,
+        action="store_true",
         help="Ensemble forward and reverse complement predictions [Default: %default]",
     )
     parser.add_option(
@@ -65,7 +65,21 @@ def main():
         dest="folds",
         default="0",
         type="str",
-        help="Model folds to use in ensemble [Default: %default]",
+        help="Model folds to use in ensemble (comma-separated list) [Default: %default]",
+    )
+    parser.add_option(
+        '-c',
+        dest='crosses',
+        default=1,
+        type='int',
+        help='Number of cross-fold rounds [Default:%default]',
+    )
+    parser.add_option(
+        "--head",
+        dest="head_i",
+        default=0,
+        type="int",
+        help="Model head index [Default: %default]",
     )
     parser.add_option(
         "--shifts",
@@ -77,30 +91,9 @@ def main():
     parser.add_option(
         "--span",
         dest="span",
-        default=0,
-        type="int",
+        default=False,
+        action="store_true",
         help="Aggregate entire gene span [Default: %default]",
-    )
-    parser.add_option(
-        "--smoothgrad",
-        dest="smooth_grad",
-        default=0,
-        type="int",
-        help="Run smoothgrad [Default: %default]",
-    )
-    parser.add_option(
-        "--samples",
-        dest="n_samples",
-        default=5,
-        type="int",
-        help="Number of smoothgrad samples [Default: %default]",
-    )
-    parser.add_option(
-        "--sampleprob",
-        dest="sample_prob",
-        default=0.875,
-        type="float",
-        help="Probability of not mutating a position in smoothgrad [Default: %default]",
     )
     parser.add_option(
         "--clip_soft",
@@ -108,6 +101,27 @@ def main():
         default=None,
         type="float",
         help="Model clip_soft setting [Default: %default]",
+    )
+    parser.add_option(
+        "--track_scale",
+        dest="track_scale",
+        default=0.02,
+        type="float",
+        help="Target transform scale [Default: %default]",
+    )
+    parser.add_option(
+        "--track_transform",
+        dest="track_transform",
+        default=0.75,
+        type="float",
+        help="Target transform exponent [Default: %default]",
+    )
+    parser.add_option(
+        "--untransform_old",
+        dest="untransform_old",
+        default=False,
+        action="store_true",
+        help="Run gradients with old version of inverse transforms [Default: %default]",
     )
     parser.add_option(
         "-t",
@@ -166,7 +180,10 @@ def main():
     # load first model fold to get parameters
 
     seqnn_model = seqnn.SeqNN(params_model)
-    seqnn_model.restore(model_folder + "/f0c0/model0_best.h5", 0, by_name=False)
+    seqnn_model.restore(
+        model_folder + "/f" + str(options.folds[0]) + "c0/train/model" + str(options.head_i) + "_best.h5",
+        options.head_i
+    )
     seqnn_model.build_slice(targets_df.index, False)
     # seqnn_model.build_ensemble(options.rc, options.shifts)
 
@@ -242,347 +259,343 @@ def main():
 
     # loop over folds
     for fold_ix in options.folds:
-        print("-- Fold = " + str(fold_ix) + " --")
+        for cross_ix in options.crosses:
+            
+            print("-- fold = f" + str(fold_ix) + "c" + str(cross_ix) + " --")
 
-        # (re-)initialize HDF5
-        scores_h5_file = "%s/scores_f%dc0.h5" % (options.out_dir, fold_ix)
-        if os.path.isfile(scores_h5_file):
-            os.remove(scores_h5_file)
-        scores_h5 = h5py.File(scores_h5_file, "w")
-        scores_h5.create_dataset("seqs", dtype="bool", shape=(num_genes, seq_len, 4))
-        scores_h5.create_dataset(
-            "grads", dtype="float16", shape=(num_genes, seq_len, 4, num_targets)
-        )
-        scores_h5.create_dataset("gene", data=np.array(gene_list, dtype="S"))
-        scores_h5.create_dataset("chr", data=np.array(genes_chr, dtype="S"))
-        scores_h5.create_dataset("start", data=np.array(genes_start))
-        scores_h5.create_dataset("end", data=np.array(genes_end))
-        scores_h5.create_dataset("strand", data=np.array(genes_strand, dtype="S"))
-
-        # load model fold
-        seqnn_model = seqnn.SeqNN(params_model)
-        seqnn_model.restore(
-            model_folder + "/f" + str(fold_ix) + "c0/model0_best.h5", 0, by_name=False
-        )
-        seqnn_model.build_slice(targets_df.index, False)
-
-        track_scale = targets_df.iloc[0]["scale"]
-        track_transform = 3.0 / 4.0
-
-        for shift in options.shifts:
-            print("Processing shift %d" % shift, flush=True)
-
-            for rev_comp in [False, True] if options.rc == 1 else [False]:
-
-                if options.rc == 1:
-                    print(
-                        "Fwd/rev = %s" % ("fwd" if not rev_comp else "rev"), flush=True
-                    )
-
-                seq_1hots = []
-                gene_slices = []
-                gene_slices_denom = []
-                gene_targets = []
-
-                for gi, gene_id in enumerate(gene_list):
-
-                    if gi % 500 == 0:
-                        print("Processing %d, %s" % (gi, gene_id), flush=True)
-
-                    gene = transcriptome.genes[gene_id]
-
-                    # make sequence
-                    seq_1hot = make_seq_1hot(
-                        genome_open,
-                        genes_chr[gi],
-                        genes_start[gi],
-                        genes_end[gi],
-                        seq_len,
-                    )
-                    seq_1hot = dna_io.hot1_augment(seq_1hot, shift=shift)
-
-                    # get splice dataframe
-                    gene_splice_df = splice_df.query(
-                        "Chromosome == '"
-                        + genes_chr[gi]
-                        + "' and ((End > "
-                        + str(genes_start[gi])
-                        + " and End <= "
-                        + str(genes_end[gi])
-                        + ") or (Start < "
-                        + str(genes_end[gi])
-                        + " and Start >= "
-                        + str(genes_start[gi])
-                        + ")) and Strand == '"
-                        + str(genes_strand[gi])
-                        + "'"
-                    ).sort_values(by=["Chromosome", "Start"], ascending=True)
-
-                    gene_slice = None
-                    gene_slice_denom = None
-
-                    if len(gene_splice_df) > 0:
-
-                        # get random splice junction (donor or acceptor)
-                        rand_ix = np.random.randint(len(gene_splice_df))
-
-                        # get splice junction position
-                        splice_start = gene_splice_df.iloc[rand_ix]["Start"]
-                        splice_end = gene_splice_df.iloc[rand_ix]["End"]
-                        splice_strand = gene_splice_df.iloc[rand_ix]["Strand"]
-                        donor_or_acceptor = gene_splice_df.iloc[rand_ix]["feature"]
-
-                        # determine output sequence start
-                        seq_out_start = genes_start[gi] + model_stride * model_crop
-
-                        # get relative splice positions
-                        splice_seq_start = max(0, splice_start - seq_out_start)
-                        splice_seq_end = max(0, splice_end - seq_out_start)
-
-                        # determine output positions
-
-                        if donor_or_acceptor == "donor":
-
-                            # upstream coverage (before donor)
-                            bin_start = None
-                            bin_end = None
-                            if splice_strand == "+":
-                                bin_end = (
-                                    int(np.round(splice_seq_start / model_stride)) + 1
-                                )
-                                bin_start = bin_end - 3
-                            else:
-                                bin_start = int(np.round(splice_seq_end / model_stride))
-                                bin_end = bin_start + 3
-
-                            # clip right boundaries
-                            bin_max = int(
-                                (seq_len - 2.0 * model_stride * model_crop)
-                                / model_stride
-                            )
-                            bin_start = max(min(bin_start, bin_max), 0)
-                            bin_end = max(min(bin_end, bin_max), 0)
-
-                            gene_slice = np.arange(bin_start, bin_end)
-
-                            # downstream coverage (after donor)
-                            bin_start = None
-                            bin_end = None
-                            if splice_strand == "+":
-                                bin_start = (
-                                    int(np.round(splice_seq_end / model_stride)) + 1
-                                )
-                                bin_end = bin_start + 3
-                            else:
-                                bin_end = int(np.round(splice_seq_start / model_stride))
-                                bin_start = bin_end - 3
-
-                            # clip right boundaries
-                            bin_max = int(
-                                (seq_len - 2.0 * model_stride * model_crop)
-                                / model_stride
-                            )
-                            bin_start = max(min(bin_start, bin_max), 0)
-                            bin_end = max(min(bin_end, bin_max), 0)
-
-                            gene_slice_denom = np.arange(bin_start, bin_end)
-
-                        elif donor_or_acceptor == "acceptor":
-
-                            # downstream coverage (after acceptor)
-                            bin_start = None
-                            bin_end = None
-                            if splice_strand == "+":
-                                bin_start = int(np.round(splice_seq_end / model_stride))
-                                bin_end = bin_start + 3
-                            else:
-                                bin_end = (
-                                    int(np.round(splice_seq_start / model_stride)) + 1
-                                )
-                                bin_start = bin_end - 3
-
-                            # clip right boundaries
-                            bin_max = int(
-                                (seq_len - 2.0 * model_stride * model_crop)
-                                / model_stride
-                            )
-                            bin_start = max(min(bin_start, bin_max), 0)
-                            bin_end = max(min(bin_end, bin_max), 0)
-
-                            gene_slice = np.arange(bin_start, bin_end)
-
-                            # upstream coverage (before acceptor)
-                            bin_start = None
-                            bin_end = None
-                            if splice_strand == "+":
-                                bin_end = int(np.round(splice_seq_start / model_stride))
-                                bin_start = bin_end - 3
-                            else:
-                                bin_start = (
-                                    int(np.round(splice_seq_end / model_stride)) + 1
-                                )
-                                bin_end = bin_start + 3
-
-                            # clip right boundaries
-                            bin_max = int(
-                                (seq_len - 2.0 * model_stride * model_crop)
-                                / model_stride
-                            )
-                            bin_start = max(min(bin_start, bin_max), 0)
-                            bin_end = max(min(bin_end, bin_max), 0)
-
-                            gene_slice_denom = np.arange(bin_start, bin_end)
-
-                    else:
-                        gene_slice = np.array([0])
-                        gene_slice_denom = np.array([0])
-
-                    if gene_slice.shape[0] == 0 or gene_slice_denom.shape[0] == 0:
-                        gene_slice = np.array([0])
-                        gene_slice_denom = np.array([0])
-
-                    if rev_comp:
-                        seq_1hot = dna_io.hot1_rc(seq_1hot)
-                        gene_slice = target_length - gene_slice - 1
-                        gene_slice_denom = target_length - gene_slice_denom - 1
-
-                    # slice relevant strand targets
-                    if genes_strand[gi] == "+":
-                        gene_strand_mask = (
-                            (targets_df.strand != "-")
-                            if not rev_comp
-                            else (targets_df.strand != "+")
-                        )
-                    else:
-                        gene_strand_mask = (
-                            (targets_df.strand != "+")
-                            if not rev_comp
-                            else (targets_df.strand != "-")
-                        )
-
-                    gene_target = np.array(targets_df.index[gene_strand_mask].values)
-
-                    # accumulate data tensors
-                    seq_1hots.append(seq_1hot[None, ...])
-                    gene_slices.append(gene_slice[None, ...])
-                    gene_slices_denom.append(gene_slice_denom[None, ...])
-                    gene_targets.append(gene_target[None, ...])
-
-                    if gi == len(gene_list) - 1 or len(seq_1hots) >= buffer_size:
-
-                        # concat sequences
-                        seq_1hots = np.concatenate(seq_1hots, axis=0)
-
-                        # pad gene slices to same length (mark valid positions in mask tensor)
-                        max_slice_len = int(
-                            np.max([gene_slice.shape[1] for gene_slice in gene_slices])
-                        )
-                        max_slice_denom_len = int(
-                            np.max(
-                                [
-                                    gene_slice_denom.shape[1]
-                                    for gene_slice_denom in gene_slices_denom
-                                ]
-                            )
-                        )
-
-                        gene_masks = np.zeros(
-                            (len(gene_slices), max_slice_len), dtype="float32"
-                        )
-                        gene_slices_padded = np.zeros(
-                            (len(gene_slices), max_slice_len), dtype="int32"
-                        )
-                        for gii, gene_slice in enumerate(gene_slices):
-                            for j in range(gene_slice.shape[1]):
-                                gene_masks[gii, j] = 1.0
-                                gene_slices_padded[gii, j] = gene_slice[0, j]
-
-                        gene_slices = gene_slices_padded
-
-                        gene_masks_denom = np.zeros(
-                            (len(gene_slices_denom), max_slice_denom_len),
-                            dtype="float32",
-                        )
-                        gene_slices_denom_padded = np.zeros(
-                            (len(gene_slices_denom), max_slice_denom_len), dtype="int32"
-                        )
-                        for gii, gene_slice_denom in enumerate(gene_slices_denom):
-                            for j in range(gene_slice_denom.shape[1]):
-                                gene_masks_denom[gii, j] = 1.0
-                                gene_slices_denom_padded[gii, j] = gene_slice_denom[
-                                    0, j
-                                ]
-
-                        gene_slices_denom = gene_slices_denom_padded
-
-                        # concat gene-specific targets
-                        gene_targets = np.concatenate(gene_targets, axis=0)
-
-                        # batch call gradient computation
-                        grads = seqnn_model.gradients(
-                            seq_1hots,
-                            head_i=0,
-                            target_slice=gene_targets,
-                            pos_slice=gene_slices,
-                            pos_mask=gene_masks,
-                            pos_slice_denom=gene_slices_denom,
-                            pos_mask_denom=gene_masks_denom,
-                            chunk_size=buffer_size
-                            if options.smooth_grad != 1
-                            else buffer_size // options.n_samples,
-                            batch_size=1,
-                            track_scale=track_scale,
-                            track_transform=track_transform,
-                            clip_soft=options.clip_soft,
-                            use_mean=True,
-                            use_ratio=True,
-                            use_logodds=False,
-                            subtract_avg=True,
-                            input_gate=False,
-                            smooth_grad=options.smooth_grad == 1,
-                            n_samples=options.n_samples,
-                            sample_prob=options.sample_prob,
-                            dtype="float16",
-                        )
-
-                        # undo augmentations and save gradients
-                        for gii, gene_slice in enumerate(gene_slices):
-                            grad = unaugment_grads(
-                                grads[gii, :, :, None],
-                                fwdrc=(not rev_comp),
-                                shift=shift,
-                            )
-
-                            h5_gi = (gi // buffer_size) * buffer_size + gii
-
-                            # write to HDF5
-                            scores_h5["grads"][h5_gi] += grad
-
-                        # clear sequence buffer
-                        seq_1hots = []
-                        gene_slices = []
-                        gene_slices_denom = []
-                        gene_targets = []
-
-                        # collect garbage
-                        gc.collect()
-
-        # save sequences and normalize gradients by total size of ensemble
-        for gi, gene_id in enumerate(gene_list):
-
-            # re-make original sequence
-            seq_1hot = make_seq_1hot(
-                genome_open, genes_chr[gi], genes_start[gi], genes_end[gi], seq_len
+            # (re-)initialize HDF5
+            scores_h5_file = "%s/scores_f%dc%d.h5" % (options.out_dir, fold_ix, cross_ix)
+            if os.path.isfile(scores_h5_file):
+                os.remove(scores_h5_file)
+            scores_h5 = h5py.File(scores_h5_file, "w")
+            scores_h5.create_dataset("seqs", dtype="bool", shape=(num_genes, seq_len, 4))
+            scores_h5.create_dataset(
+                "grads", dtype="float16", shape=(num_genes, seq_len, 4, num_targets)
             )
+            scores_h5.create_dataset("gene", data=np.array(gene_list, dtype="S"))
+            scores_h5.create_dataset("chr", data=np.array(genes_chr, dtype="S"))
+            scores_h5.create_dataset("start", data=np.array(genes_start))
+            scores_h5.create_dataset("end", data=np.array(genes_end))
+            scores_h5.create_dataset("strand", data=np.array(genes_strand, dtype="S"))
 
-            # write to HDF5
-            scores_h5["seqs"][gi] = seq_1hot
-            scores_h5["grads"][gi] /= float(
-                (len(options.shifts) * (2 if options.rc == 1 else 1))
+            # load model fold
+            seqnn_model = seqnn.SeqNN(params_model)
+            seqnn_model.restore(
+                model_folder + "/f" + str(fold_ix) + "c" + str(cross_ix) + "/train/model" + str(options.head_i) + "_best.h5",
+                options.head_i
             )
+            seqnn_model.build_slice(targets_df.index, False)
 
-        # collect garbage
-        gc.collect()
+            for shift in options.shifts:
+                print("Processing shift %d" % shift, flush=True)
+
+                for rev_comp in [False, True] if options.rc else [False]:
+
+                    if options.rc:
+                        print(
+                            "Fwd/rev = %s" % ("fwd" if not rev_comp else "rev"), flush=True
+                        )
+
+                    seq_1hots = []
+                    gene_slices = []
+                    gene_slices_denom = []
+                    gene_targets = []
+
+                    for gi, gene_id in enumerate(gene_list):
+
+                        if gi % 500 == 0:
+                            print("Processing %d, %s" % (gi, gene_id), flush=True)
+
+                        gene = transcriptome.genes[gene_id]
+
+                        # make sequence
+                        seq_1hot = make_seq_1hot(
+                            genome_open,
+                            genes_chr[gi],
+                            genes_start[gi],
+                            genes_end[gi],
+                            seq_len,
+                        )
+                        seq_1hot = dna_io.hot1_augment(seq_1hot, shift=shift)
+
+                        # get splice dataframe
+                        gene_splice_df = splice_df.query(
+                            "Chromosome == '"
+                            + genes_chr[gi]
+                            + "' and ((End > "
+                            + str(genes_start[gi])
+                            + " and End <= "
+                            + str(genes_end[gi])
+                            + ") or (Start < "
+                            + str(genes_end[gi])
+                            + " and Start >= "
+                            + str(genes_start[gi])
+                            + ")) and Strand == '"
+                            + str(genes_strand[gi])
+                            + "'"
+                        ).sort_values(by=["Chromosome", "Start"], ascending=True)
+
+                        gene_slice = None
+                        gene_slice_denom = None
+
+                        if len(gene_splice_df) > 0:
+
+                            # get random splice junction (donor or acceptor)
+                            rand_ix = np.random.randint(len(gene_splice_df))
+
+                            # get splice junction position
+                            splice_start = gene_splice_df.iloc[rand_ix]["Start"]
+                            splice_end = gene_splice_df.iloc[rand_ix]["End"]
+                            splice_strand = gene_splice_df.iloc[rand_ix]["Strand"]
+                            donor_or_acceptor = gene_splice_df.iloc[rand_ix]["feature"]
+
+                            # determine output sequence start
+                            seq_out_start = genes_start[gi] + model_stride * model_crop
+
+                            # get relative splice positions
+                            splice_seq_start = max(0, splice_start - seq_out_start)
+                            splice_seq_end = max(0, splice_end - seq_out_start)
+
+                            # determine output positions
+
+                            if donor_or_acceptor == "donor":
+
+                                # upstream coverage (before donor)
+                                bin_start = None
+                                bin_end = None
+                                if splice_strand == "+":
+                                    bin_end = (
+                                        int(np.round(splice_seq_start / model_stride)) + 1
+                                    )
+                                    bin_start = bin_end - 3
+                                else:
+                                    bin_start = int(np.round(splice_seq_end / model_stride))
+                                    bin_end = bin_start + 3
+
+                                # clip right boundaries
+                                bin_max = int(
+                                    (seq_len - 2.0 * model_stride * model_crop)
+                                    / model_stride
+                                )
+                                bin_start = max(min(bin_start, bin_max), 0)
+                                bin_end = max(min(bin_end, bin_max), 0)
+
+                                gene_slice = np.arange(bin_start, bin_end)
+
+                                # downstream coverage (after donor)
+                                bin_start = None
+                                bin_end = None
+                                if splice_strand == "+":
+                                    bin_start = (
+                                        int(np.round(splice_seq_end / model_stride)) + 1
+                                    )
+                                    bin_end = bin_start + 3
+                                else:
+                                    bin_end = int(np.round(splice_seq_start / model_stride))
+                                    bin_start = bin_end - 3
+
+                                # clip right boundaries
+                                bin_max = int(
+                                    (seq_len - 2.0 * model_stride * model_crop)
+                                    / model_stride
+                                )
+                                bin_start = max(min(bin_start, bin_max), 0)
+                                bin_end = max(min(bin_end, bin_max), 0)
+
+                                gene_slice_denom = np.arange(bin_start, bin_end)
+
+                            elif donor_or_acceptor == "acceptor":
+
+                                # downstream coverage (after acceptor)
+                                bin_start = None
+                                bin_end = None
+                                if splice_strand == "+":
+                                    bin_start = int(np.round(splice_seq_end / model_stride))
+                                    bin_end = bin_start + 3
+                                else:
+                                    bin_end = (
+                                        int(np.round(splice_seq_start / model_stride)) + 1
+                                    )
+                                    bin_start = bin_end - 3
+
+                                # clip right boundaries
+                                bin_max = int(
+                                    (seq_len - 2.0 * model_stride * model_crop)
+                                    / model_stride
+                                )
+                                bin_start = max(min(bin_start, bin_max), 0)
+                                bin_end = max(min(bin_end, bin_max), 0)
+
+                                gene_slice = np.arange(bin_start, bin_end)
+
+                                # upstream coverage (before acceptor)
+                                bin_start = None
+                                bin_end = None
+                                if splice_strand == "+":
+                                    bin_end = int(np.round(splice_seq_start / model_stride))
+                                    bin_start = bin_end - 3
+                                else:
+                                    bin_start = (
+                                        int(np.round(splice_seq_end / model_stride)) + 1
+                                    )
+                                    bin_end = bin_start + 3
+
+                                # clip right boundaries
+                                bin_max = int(
+                                    (seq_len - 2.0 * model_stride * model_crop)
+                                    / model_stride
+                                )
+                                bin_start = max(min(bin_start, bin_max), 0)
+                                bin_end = max(min(bin_end, bin_max), 0)
+
+                                gene_slice_denom = np.arange(bin_start, bin_end)
+
+                        else:
+                            gene_slice = np.array([0])
+                            gene_slice_denom = np.array([0])
+
+                        if gene_slice.shape[0] == 0 or gene_slice_denom.shape[0] == 0:
+                            gene_slice = np.array([0])
+                            gene_slice_denom = np.array([0])
+
+                        if rev_comp:
+                            seq_1hot = dna_io.hot1_rc(seq_1hot)
+                            gene_slice = target_length - gene_slice - 1
+                            gene_slice_denom = target_length - gene_slice_denom - 1
+
+                        # slice relevant strand targets
+                        if genes_strand[gi] == "+":
+                            gene_strand_mask = (
+                                (targets_df.strand != "-")
+                                if not rev_comp
+                                else (targets_df.strand != "+")
+                            )
+                        else:
+                            gene_strand_mask = (
+                                (targets_df.strand != "+")
+                                if not rev_comp
+                                else (targets_df.strand != "-")
+                            )
+
+                        gene_target = np.array(targets_df.index[gene_strand_mask].values)
+
+                        # accumulate data tensors
+                        seq_1hots.append(seq_1hot[None, ...])
+                        gene_slices.append(gene_slice[None, ...])
+                        gene_slices_denom.append(gene_slice_denom[None, ...])
+                        gene_targets.append(gene_target[None, ...])
+
+                        if gi == len(gene_list) - 1 or len(seq_1hots) >= buffer_size:
+
+                            # concat sequences
+                            seq_1hots = np.concatenate(seq_1hots, axis=0)
+
+                            # pad gene slices to same length (mark valid positions in mask tensor)
+                            max_slice_len = int(
+                                np.max([gene_slice.shape[1] for gene_slice in gene_slices])
+                            )
+                            max_slice_denom_len = int(
+                                np.max(
+                                    [
+                                        gene_slice_denom.shape[1]
+                                        for gene_slice_denom in gene_slices_denom
+                                    ]
+                                )
+                            )
+
+                            gene_masks = np.zeros(
+                                (len(gene_slices), max_slice_len), dtype="float32"
+                            )
+                            gene_slices_padded = np.zeros(
+                                (len(gene_slices), max_slice_len), dtype="int32"
+                            )
+                            for gii, gene_slice in enumerate(gene_slices):
+                                for j in range(gene_slice.shape[1]):
+                                    gene_masks[gii, j] = 1.0
+                                    gene_slices_padded[gii, j] = gene_slice[0, j]
+
+                            gene_slices = gene_slices_padded
+
+                            gene_masks_denom = np.zeros(
+                                (len(gene_slices_denom), max_slice_denom_len),
+                                dtype="float32",
+                            )
+                            gene_slices_denom_padded = np.zeros(
+                                (len(gene_slices_denom), max_slice_denom_len), dtype="int32"
+                            )
+                            for gii, gene_slice_denom in enumerate(gene_slices_denom):
+                                for j in range(gene_slice_denom.shape[1]):
+                                    gene_masks_denom[gii, j] = 1.0
+                                    gene_slices_denom_padded[gii, j] = gene_slice_denom[
+                                        0, j
+                                    ]
+
+                            gene_slices_denom = gene_slices_denom_padded
+
+                            # concat gene-specific targets
+                            gene_targets = np.concatenate(gene_targets, axis=0)
+
+                            # batch call gradient computation
+                            grads = seqnn_model.gradients(
+                                seq_1hots,
+                                head_i=0,
+                                target_slice=gene_targets,
+                                pos_slice=gene_slices,
+                                pos_mask=gene_masks,
+                                pos_slice_denom=gene_slices_denom,
+                                pos_mask_denom=gene_masks_denom,
+                                chunk_size=buffer_size,
+                                batch_size=1,
+                                track_scale=options.track_scale,
+                                track_transform=options.track_transform,
+                                clip_soft=options.clip_soft,
+                                untransform_old=options.untransform_old,
+                                use_mean=True,
+                                use_ratio=True,
+                                use_logodds=False,
+                                subtract_avg=True,
+                                input_gate=False,
+                                dtype="float16",
+                            )
+
+                            # undo augmentations and save gradients
+                            for gii, gene_slice in enumerate(gene_slices):
+                                grad = unaugment_grads(
+                                    grads[gii, :, :, None],
+                                    fwdrc=(not rev_comp),
+                                    shift=shift,
+                                )
+
+                                h5_gi = (gi // buffer_size) * buffer_size + gii
+
+                                # write to HDF5
+                                scores_h5["grads"][h5_gi] += grad
+
+                            # clear sequence buffer
+                            seq_1hots = []
+                            gene_slices = []
+                            gene_slices_denom = []
+                            gene_targets = []
+
+                            # collect garbage
+                            gc.collect()
+
+            # save sequences and normalize gradients by total size of ensemble
+            for gi, gene_id in enumerate(gene_list):
+
+                # re-make original sequence
+                seq_1hot = make_seq_1hot(
+                    genome_open, genes_chr[gi], genes_start[gi], genes_end[gi], seq_len
+                )
+
+                # write to HDF5
+                scores_h5["seqs"][gi] = seq_1hot
+                scores_h5["grads"][gi] /= float(
+                    (len(options.shifts) * (2 if options.rc else 1))
+                )
+
+            # collect garbage
+            gc.collect()
 
     # close files
     genome_open.close()

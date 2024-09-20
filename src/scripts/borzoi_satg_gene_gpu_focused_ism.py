@@ -58,8 +58,8 @@ def main():
     parser.add_option(
         "--rc",
         dest="rc",
-        default=0,
-        type="int",
+        default=False,
+        action="store_true",
         help="Ensemble forward and reverse complement predictions [Default: %default]",
     )
     parser.add_option(
@@ -67,7 +67,21 @@ def main():
         dest="folds",
         default="0",
         type="str",
-        help="Model folds to use in ensemble [Default: %default]",
+        help="Model folds to use in ensemble (comma-separated list) [Default: %default]",
+    )
+    parser.add_option(
+        '-c',
+        dest='crosses',
+        default=1,
+        type='int',
+        help='Number of cross-fold rounds [Default:%default]',
+    )
+    parser.add_option(
+        "--head",
+        dest="head_i",
+        default=0,
+        type="int",
+        help="Model head index [Default: %default]",
     )
     parser.add_option(
         "--shifts",
@@ -79,8 +93,8 @@ def main():
     parser.add_option(
         "--span",
         dest="span",
-        default=0,
-        type="int",
+        default=False,
+        action="store_true",
         help="Aggregate entire gene span [Default: %default]",
     )
     parser.add_option(
@@ -91,10 +105,31 @@ def main():
         help="Model clip_soft setting [Default: %default]",
     )
     parser.add_option(
-        "--no_transform",
-        dest="no_transform",
-        default=0,
-        type="int",
+        "--track_scale",
+        dest="track_scale",
+        default=0.02,
+        type="float",
+        help="Target transform scale [Default: %default]",
+    )
+    parser.add_option(
+        "--track_transform",
+        dest="track_transform",
+        default=0.75,
+        type="float",
+        help="Target transform exponent [Default: %default]",
+    )
+    parser.add_option(
+        "--untransform_old",
+        dest="untransform_old",
+        default=False,
+        action="store_true",
+        help="Run gradients with old version of inverse transforms [Default: %default]",
+    )
+    parser.add_option(
+        "--no_untransform",
+        dest="no_untransform",
+        default=False,
+        action="store_true",
         help="Run gradients with no inverse transforms [Default: %default]",
     )
     parser.add_option(
@@ -109,7 +144,7 @@ def main():
         dest="aggregate_tracks",
         default=None,
         type="int",
-        help="Run gradients with no inverse transforms [Default: %default]",
+        help="Aggregate groups of tracks [Default: %default]",
     )
     parser.add_option(
         "-t",
@@ -231,7 +266,10 @@ def main():
     # load first model fold to get parameters
 
     seqnn_model = seqnn.SeqNN(params_model)
-    seqnn_model.restore(model_folder + "/f0c0/model0_best.h5", 0, by_name=False)
+    seqnn_model.restore(
+        model_folder + "/f" + str(options.folds[0]) + "c0/train/model" + str(options.head_i) + "_best.h5",
+        options.head_i
+    )
     seqnn_model.build_slice(targets_df.index, False)
     # seqnn_model.build_ensemble(options.rc, options.shifts)
 
@@ -438,170 +476,171 @@ def main():
 
     # loop over folds
     for fold_ix in options.folds:
-        print("-- Fold = " + str(fold_ix) + " --")
+        for cross_ix in options.crosses:
+            
+            print("-- fold = f" + str(fold_ix) + "c" + str(cross_ix) + " --")
 
-        # (re-)initialize HDF5
-        scores_h5_file = "%s/ism_f%dc0.h5" % (options.out_dir, fold_ix)
-        if os.path.isfile(scores_h5_file):
-            os.remove(scores_h5_file)
-        scores_h5 = h5py.File(scores_h5_file, "w")
-        scores_h5.create_dataset(
-            "seqs", dtype="bool", shape=(num_genes, options.ism_size, 4)
-        )
-        scores_h5.create_dataset(
-            "isms",
-            dtype="float16",
-            shape=(
-                num_genes,
-                options.ism_size,
-                4,
-                num_targets
-                // (
-                    options.aggregate_tracks
-                    if options.aggregate_tracks is not None
-                    else 1
+            # (re-)initialize HDF5
+            scores_h5_file = "%s/ism_f%dc%d.h5" % (options.out_dir, fold_ix, cross_ix)
+            if os.path.isfile(scores_h5_file):
+                os.remove(scores_h5_file)
+            scores_h5 = h5py.File(scores_h5_file, "w")
+            scores_h5.create_dataset(
+                "seqs", dtype="bool", shape=(num_genes, options.ism_size, 4)
+            )
+            scores_h5.create_dataset(
+                "isms",
+                dtype="float16",
+                shape=(
+                    num_genes,
+                    options.ism_size,
+                    4,
+                    num_targets
+                    // (
+                        options.aggregate_tracks
+                        if options.aggregate_tracks is not None
+                        else 1
+                    ),
                 ),
-            ),
-        )
-        scores_h5.create_dataset("gene", data=np.array(gene_list, dtype="S"))
-        scores_h5.create_dataset("chr", data=np.array(genes_chr, dtype="S"))
-        scores_h5.create_dataset("start", data=np.array(genes_start))
-        scores_h5.create_dataset("end", data=np.array(genes_end))
-        scores_h5.create_dataset("ism_start", data=np.array(genes_ism_start))
-        scores_h5.create_dataset("ism_end", data=np.array(genes_ism_end))
-        scores_h5.create_dataset("strand", data=np.array(genes_strand, dtype="S"))
+            )
+            scores_h5.create_dataset("gene", data=np.array(gene_list, dtype="S"))
+            scores_h5.create_dataset("chr", data=np.array(genes_chr, dtype="S"))
+            scores_h5.create_dataset("start", data=np.array(genes_start))
+            scores_h5.create_dataset("end", data=np.array(genes_end))
+            scores_h5.create_dataset("ism_start", data=np.array(genes_ism_start))
+            scores_h5.create_dataset("ism_end", data=np.array(genes_ism_end))
+            scores_h5.create_dataset("strand", data=np.array(genes_strand, dtype="S"))
 
-        # load model fold
-        seqnn_model = seqnn.SeqNN(params_model)
-        seqnn_model.restore(
-            model_folder + "/f" + str(fold_ix) + "c0/model0_best.h5", 0, by_name=False
-        )
-        seqnn_model.build_slice(targets_df.index, False)
+            # load model fold
+            seqnn_model = seqnn.SeqNN(params_model)
+            seqnn_model.restore(
+                model_folder + "/f" + str(fold_ix) + "c" + str(cross_ix) + "/train/model" + str(options.head_i) + "_best.h5",
+                options.head_i
+            )
+            seqnn_model.build_slice(targets_df.index, False)
 
-        track_scale = targets_df.iloc[0]["scale"]
-        track_transform = 3.0 / 4.0
+            for shift in options.shifts:
+                print("Processing shift %d" % shift, flush=True)
 
-        for shift in options.shifts:
-            print("Processing shift %d" % shift, flush=True)
+                for rev_comp in [False, True] if options.rc else [False]:
 
-            for rev_comp in [False, True] if options.rc == 1 else [False]:
-
-                if options.rc == 1:
-                    print(
-                        "Fwd/rev = %s" % ("fwd" if not rev_comp else "rev"), flush=True
-                    )
-
-                seq_1hots = []
-                gene_slices = []
-                gene_targets = []
-
-                for gi, gene_id in enumerate(gene_list):
-
-                    if gi % 50 == 0:
-                        print("Processing %d, %s" % (gi, gene_id), flush=True)
-
-                    gene = transcriptome.genes[gene_id]
-
-                    # make sequence
-                    seq_1hot = make_seq_1hot(
-                        genome_open,
-                        genes_chr[gi],
-                        genes_start[gi],
-                        genes_end[gi],
-                        seq_len,
-                    )
-                    seq_1hot = dna_io.hot1_augment(seq_1hot, shift=shift)
-
-                    # determine output sequence start
-                    seq_out_start = genes_start[gi] + model_stride * model_crop
-                    seq_out_len = model_stride * target_length
-
-                    # determine output positions
-                    gene_slice = gene.output_slice(
-                        seq_out_start, seq_out_len, model_stride, options.span == 1
-                    )
-
-                    # determine ism window
-                    gene_ism_start = genes_ism_start[gi]
-                    gene_ism_end = genes_ism_end[gi]
-
-                    if rev_comp:
-                        seq_1hot = dna_io.hot1_rc(seq_1hot)
-                        gene_slice = target_length - gene_slice - 1
-
-                        gene_ism_start = seq_len - genes_ism_end[gi] - 1
-                        gene_ism_end = seq_len - genes_ism_start[gi] - 1
-
-                    # slice relevant strand targets
-                    if genes_strand[gi] == "+":
-                        gene_strand_mask = (
-                            (targets_df.strand != "-")
-                            if not rev_comp
-                            else (targets_df.strand != "+")
-                        )
-                    else:
-                        gene_strand_mask = (
-                            (targets_df.strand != "+")
-                            if not rev_comp
-                            else (targets_df.strand != "-")
+                    if options.rc:
+                        print(
+                            "Fwd/rev = %s" % ("fwd" if not rev_comp else "rev"), flush=True
                         )
 
-                    gene_target = np.array(targets_df.index[gene_strand_mask].values)
+                    seq_1hots = []
+                    gene_slices = []
+                    gene_targets = []
 
-                    # broadcast to singleton batch
-                    seq_1hot = seq_1hot[None, ...]
-                    gene_slice = gene_slice[None, ...]
-                    gene_target = gene_target[None, ...]
+                    for gi, gene_id in enumerate(gene_list):
 
-                    # ism computation
-                    ism = get_ism(
-                        seqnn_model,
-                        seq_1hot,
-                        gene_ism_start,
-                        gene_ism_end,
-                        head_i=0,
-                        target_slice=gene_target,
-                        pos_slice=gene_slice,
-                        track_scale=track_scale,
-                        track_transform=track_transform,
-                        clip_soft=options.clip_soft,
-                        pseudo_count=pseudo_count,
-                        no_transform=options.no_transform == 1,
-                        aggregate_tracks=options.aggregate_tracks,
-                        use_mean=False,
-                        use_ratio=False,
-                        use_logodds=False,
-                    )
+                        if gi % 50 == 0:
+                            print("Processing %d, %s" % (gi, gene_id), flush=True)
 
-                    # undo augmentations and save ism
-                    ism = unaugment_grads(ism, fwdrc=(not rev_comp), shift=shift)
+                        gene = transcriptome.genes[gene_id]
 
-                    # write to HDF5
-                    scores_h5["isms"][gi] += ism[
-                        genes_ism_start[gi] : genes_ism_end[gi], ...
-                    ]
+                        # make sequence
+                        seq_1hot = make_seq_1hot(
+                            genome_open,
+                            genes_chr[gi],
+                            genes_start[gi],
+                            genes_end[gi],
+                            seq_len,
+                        )
+                        seq_1hot = dna_io.hot1_augment(seq_1hot, shift=shift)
 
-                    # collect garbage
-                    gc.collect()
+                        # determine output sequence start
+                        seq_out_start = genes_start[gi] + model_stride * model_crop
+                        seq_out_len = model_stride * target_length
 
-        # save sequences and normalize isms by total size of ensemble
-        for gi, gene_id in enumerate(gene_list):
+                        # determine output positions
+                        gene_slice = gene.output_slice(
+                            seq_out_start, seq_out_len, model_stride, options.span
+                        )
 
-            # re-make original sequence
-            seq_1hot = make_seq_1hot(
-                genome_open, genes_chr[gi], genes_start[gi], genes_end[gi], seq_len
-            )
+                        # determine ism window
+                        gene_ism_start = genes_ism_start[gi]
+                        gene_ism_end = genes_ism_end[gi]
 
-            # write to HDF5
-            scores_h5["seqs"][gi] = seq_1hot[
-                genes_ism_start[gi] : genes_ism_end[gi], ...
-            ]
-            scores_h5["isms"][gi] /= float(
-                (len(options.shifts) * (2 if options.rc == 1 else 1))
-            )
+                        if rev_comp:
+                            seq_1hot = dna_io.hot1_rc(seq_1hot)
+                            gene_slice = target_length - gene_slice - 1
 
-        # collect garbage
-        gc.collect()
+                            gene_ism_start = seq_len - genes_ism_end[gi] - 1
+                            gene_ism_end = seq_len - genes_ism_start[gi] - 1
+
+                        # slice relevant strand targets
+                        if genes_strand[gi] == "+":
+                            gene_strand_mask = (
+                                (targets_df.strand != "-")
+                                if not rev_comp
+                                else (targets_df.strand != "+")
+                            )
+                        else:
+                            gene_strand_mask = (
+                                (targets_df.strand != "+")
+                                if not rev_comp
+                                else (targets_df.strand != "-")
+                            )
+
+                        gene_target = np.array(targets_df.index[gene_strand_mask].values)
+
+                        # broadcast to singleton batch
+                        seq_1hot = seq_1hot[None, ...]
+                        gene_slice = gene_slice[None, ...]
+                        gene_target = gene_target[None, ...]
+
+                        # ism computation
+                        ism = get_ism(
+                            seqnn_model,
+                            seq_1hot,
+                            gene_ism_start,
+                            gene_ism_end,
+                            head_i=0,
+                            target_slice=gene_target,
+                            pos_slice=gene_slice,
+                            track_scale=options.track_scale,
+                            track_transform=options.track_transform,
+                            clip_soft=options.clip_soft,
+                            pseudo_count=pseudo_count,
+                            untransform_old=options.untransform_old,
+                            no_untransform=options.no_untransform,
+                            aggregate_tracks=options.aggregate_tracks,
+                            use_mean=False,
+                            use_ratio=False,
+                            use_logodds=False,
+                        )
+
+                        # undo augmentations and save ism
+                        ism = unaugment_grads(ism, fwdrc=(not rev_comp), shift=shift)
+
+                        # write to HDF5
+                        scores_h5["isms"][gi] += ism[
+                            genes_ism_start[gi] : genes_ism_end[gi], ...
+                        ]
+
+                        # collect garbage
+                        gc.collect()
+
+            # save sequences and normalize isms by total size of ensemble
+            for gi, gene_id in enumerate(gene_list):
+
+                # re-make original sequence
+                seq_1hot = make_seq_1hot(
+                    genome_open, genes_chr[gi], genes_start[gi], genes_end[gi], seq_len
+                )
+
+                # write to HDF5
+                scores_h5["seqs"][gi] = seq_1hot[
+                    genes_ism_start[gi] : genes_ism_end[gi], ...
+                ]
+                scores_h5["isms"][gi] /= float(
+                    (len(options.shifts) * (2 if options.rc else 1))
+                )
+
+            # collect garbage
+            gc.collect()
 
     # close files
     genome_open.close()
@@ -667,7 +706,8 @@ def _score_func(
     track_transform=1.0,
     clip_soft=None,
     pseudo_count=0.0,
-    no_transform=False,
+    untransform_old=False,
+    no_untransform=False,
     aggregate_tracks=None,
     use_mean=False,
     use_ratio=False,
@@ -679,19 +719,31 @@ def _score_func(
         model(seq_1hot, training=False), target_slice, axis=-1, batch_dims=1
     )
 
-    if not no_transform:
+    if not no_untransform:
+        if untransform_old:
+            # undo scale
+            preds = preds / track_scale
 
-        # undo scale
-        preds = preds / track_scale
+            # undo soft_clip
+            if clip_soft is not None:
+                preds = tf.where(
+                    preds > clip_soft, (preds - clip_soft) ** 2 + clip_soft, preds
+                )
 
-        # undo soft_clip
-        if clip_soft is not None:
-            preds = tf.where(
-                preds > clip_soft, (preds - clip_soft) ** 2 + clip_soft, preds
-            )
+            # undo sqrt
+            preds = preds ** (1. / track_transform)
+        else:
+            # undo clip_soft
+            if clip_soft is not None:
+                preds = tf.where(
+                    preds > clip_soft, (preds - clip_soft + 1) ** 2 + clip_soft - 1, preds
+                )
 
-        # undo sqrt
-        preds = preds ** (1.0 / track_transform)
+            # undo sqrt
+            preds = -1 + (preds + 1) ** (1. / track_transform)
+
+            # scale
+            preds = preds / track_scale
 
     if aggregate_tracks is not None:
         preds = tf.reduce_mean(
@@ -740,7 +792,7 @@ def _score_func(
                 preds_agg_denom = tf.reduce_mean(preds_slice_denom, axis=1)
 
     # compute final statistic
-    if no_transform:
+    if no_untransform:
         score_ratios = preds_agg
     elif not use_ratio:
         score_ratios = tf.math.log(preds_agg + pseudo_count + 1e-6)
@@ -777,7 +829,8 @@ def get_ism(
     track_transform=1.0,
     clip_soft=None,
     pseudo_count=0.0,
-    no_transform=False,
+    untransform_old=False,
+    no_untransform=False,
     aggregate_tracks=None,
     use_mean=False,
     use_ratio=False,
@@ -849,7 +902,7 @@ def get_ism(
     # allocate ism result tensor
     pred_ism = np.zeros(
         (
-            524288,
+            seq_1hot_wt.shape[1],
             4,
             target_slice.shape[1]
             // (aggregate_tracks if aggregate_tracks is not None else 1),
@@ -869,7 +922,8 @@ def get_ism(
         track_transform,
         clip_soft,
         pseudo_count,
-        no_transform,
+        untransform_old,
+        no_untransform,
         aggregate_tracks,
         use_mean,
         use_ratio,
@@ -899,7 +953,8 @@ def get_ism(
                     track_transform,
                     clip_soft,
                     pseudo_count,
-                    no_transform,
+                    untransform_old,
+                    no_untransform,
                     aggregate_tracks,
                     use_mean,
                     use_ratio,

@@ -35,10 +35,10 @@ import pysam
 import pygene
 import tensorflow as tf
 
-from basenji import dna_io
-from basenji import gene as bgene
-from basenji import seqnn
-from borzoi_sed import targets_prep_strand
+from baskerville import dna_io
+from baskerville import gene as bgene
+from baskerville import seqnn
+from baskerville.dataset import targets_prep_strand
 
 from scipy.ndimage import gaussian_filter1d
 
@@ -47,188 +47,6 @@ borzoi_satg_gene_gpu_crispr_ism_shuffle.py
 
 Perform a windowed shuffle analysis for genes specified in a GTF file, targeting regions specified in a separate csv.
 '''
-
-# tf code for computing ISM scores on GPU
-@tf.function
-def _score_func(model, seq_1hot, target_slice, pos_slice, pos_mask=None, pos_slice_denom=None, pos_mask_denom=True, track_scale=1., track_transform=1., clip_soft=None, pseudo_count=0., no_transform=False, aggregate_tracks=None, use_mean=False, use_ratio=False, use_logodds=False) :
-            
-    # predict
-    preds = tf.gather(model(seq_1hot, training=False), target_slice, axis=-1, batch_dims=1)
-
-    if not no_transform :
-
-        # undo scale
-        preds = preds / track_scale
-
-        # undo soft_clip
-        if clip_soft is not None :
-            preds = tf.where(preds > clip_soft, (preds - clip_soft)**2 + clip_soft, preds)
-
-        # undo sqrt
-        preds = preds**(1. / track_transform)
-
-    if aggregate_tracks is not None :
-        preds = tf.reduce_mean(tf.reshape(preds, (preds.shape[0], preds.shape[1], preds.shape[2] // aggregate_tracks, aggregate_tracks)), axis=-1)
-
-    # slice specified positions
-    preds_slice = tf.gather(preds, pos_slice, axis=1, batch_dims=1)
-    if pos_mask is not None :
-        preds_slice = preds_slice * pos_mask
-
-    # slice denominator positions
-    if use_ratio and pos_slice_denom is not None:
-        preds_slice_denom = tf.gather(preds, pos_slice_denom, axis=1, batch_dims=1)
-        if pos_mask_denom is not None :
-            preds_slice_denom = preds_slice_denom * pos_mask_denom
-
-    # aggregate over positions
-    if not use_mean :
-        preds_agg = tf.reduce_sum(preds_slice, axis=1)
-        if use_ratio and pos_slice_denom is not None:
-            preds_agg_denom = tf.reduce_sum(preds_slice_denom, axis=1)
-    else :
-        if pos_mask is not None :
-            preds_agg = tf.reduce_sum(preds_slice, axis=1) / tf.reduce_sum(pos_mask, axis=1)
-        else :
-            preds_agg = tf.reduce_mean(preds_slice, axis=1)
-
-        if use_ratio and pos_slice_denom is not None:
-            if pos_mask_denom is not None :
-                preds_agg_denom = tf.reduce_sum(preds_slice_denom, axis=1) / tf.reduce_sum(pos_mask_denom, axis=1)
-            else :
-                preds_agg_denom = tf.reduce_mean(preds_slice_denom, axis=1)
-
-    # compute final statistic
-    if no_transform :
-        score_ratios = preds_agg
-    elif not use_ratio :
-        score_ratios = tf.math.log(preds_agg + pseudo_count + 1e-6)
-    else :
-        if not use_logodds :
-            score_ratios = tf.math.log((preds_agg + pseudo_count) / (preds_agg_denom + pseudo_count) + 1e-6)
-        else :
-            score_ratios = tf.math.log(((preds_agg + pseudo_count) / (preds_agg_denom + pseudo_count)) / (1. - ((preds_agg + pseudo_count) / (preds_agg_denom + pseudo_count))) + 1e-6)
-
-    return score_ratios
-
-def get_ism_shuffle(seqnn_model, seq_1hot_wt, ism_regions, head_i=None, target_slice=None, pos_slice=None, pos_mask=None, pos_slice_denom=None, pos_mask_denom=None, track_scale=1., track_transform=1., clip_soft=None, pseudo_count=0., no_transform=False, aggregate_tracks=None, use_mean=False, use_ratio=False, use_logodds=False, bases=[0, 1, 2, 3], window_size=5, n_samples=8, mononuc_shuffle=False, dinuc_shuffle=False) :
-    
-    # choose model
-    if seqnn_model.ensemble is not None:
-        model = seqnn_model.ensemble
-    elif head_i is not None:
-        model = seqnn_model.models[head_i]
-    else:
-        model = seqnn_model.model
-    
-    # verify tensor shape(s)
-    seq_1hot_wt = seq_1hot_wt.astype('float32')
-    target_slice = np.array(target_slice).astype('int32')
-    pos_slice = np.array(pos_slice).astype('int32')
-    
-    # convert constants to tf tensors
-    track_scale = tf.constant(track_scale, dtype=tf.float32)
-    track_transform = tf.constant(track_transform, dtype=tf.float32)
-    if clip_soft is not None :
-        clip_soft = tf.constant(clip_soft, dtype=tf.float32)
-    pseudo_count = tf.constant(pseudo_count, dtype=tf.float32)
-    
-    if pos_mask is not None :
-        pos_mask = np.array(pos_mask).astype('float32')
-    
-    if use_ratio and pos_slice_denom is not None :
-        pos_slice_denom = np.array(pos_slice_denom).astype('int32')
-      
-        if pos_mask_denom is not None :
-            pos_mask_denom = np.array(pos_mask_denom).astype('float32')
-    
-    if len(seq_1hot_wt.shape) < 3:
-        seq_1hot_wt = seq_1hot_wt[None, ...]
-    
-    if len(target_slice.shape) < 2:
-        target_slice = target_slice[None, ...]
-    
-    if len(pos_slice.shape) < 2:
-        pos_slice = pos_slice[None, ...]
-    
-    if pos_mask is not None and len(pos_mask.shape) < 2:
-        pos_mask = pos_mask[None, ...]
-    
-    if use_ratio and pos_slice_denom is not None and len(pos_slice_denom.shape) < 2:
-        pos_slice_denom = pos_slice_denom[None, ...]
-      
-        if pos_mask_denom is not None and len(pos_mask_denom.shape) < 2:
-            pos_mask_denom = pos_mask_denom[None, ...]
-    
-    # convert to tf tensors
-    seq_1hot_wt_tf = tf.convert_to_tensor(seq_1hot_wt, dtype=tf.float32)
-    target_slice = tf.convert_to_tensor(target_slice, dtype=tf.int32)
-    pos_slice = tf.convert_to_tensor(pos_slice, dtype=tf.int32)
-    
-    if pos_mask is not None :
-        pos_mask = tf.convert_to_tensor(pos_mask, dtype=tf.float32)
-    
-    if use_ratio and pos_slice_denom is not None :
-        pos_slice_denom = tf.convert_to_tensor(pos_slice_denom, dtype=tf.int32)
-    
-        if pos_mask_denom is not None :
-            pos_mask_denom = tf.convert_to_tensor(pos_mask_denom, dtype=tf.float32)
-    
-    # allocate ism shuffle result tensor
-    pred_shuffle = np.zeros((seq_1hot_wt.shape[1], n_samples, target_slice.shape[1] // (aggregate_tracks if aggregate_tracks is not None else 1)))
-    
-    # get wt pred
-    score_wt = _score_func(model, seq_1hot_wt_tf, target_slice, pos_slice, pos_mask, pos_slice_denom, pos_mask_denom, track_scale, track_transform, clip_soft, pseudo_count, no_transform, aggregate_tracks, use_mean, use_ratio, use_logodds).numpy()
-    
-    for ism_region_i, [ism_start, ism_end] in enumerate(ism_regions) :
-        for j in range(ism_start, ism_end) :
-            j_start = j - window_size // 2
-            j_end = j + window_size // 2 + 1
-
-            pos_index = np.arange(j_end - j_start) + j_start
-            
-            for sample_ix in range(n_samples):
-                seq_1hot_mut = np.copy(seq_1hot_wt)
-                seq_1hot_mut[0, j_start:j_end, :] = 0.
-                
-                if not mononuc_shuffle and not dinuc_shuffle:
-                    nt_index = np.random.choice(bases, size=(j_end - j_start,)).tolist()
-                    seq_1hot_mut[0, pos_index, nt_index] = 1.
-                elif mononuc_shuffle:
-                    shuffled_pos_index = np.copy(pos_index)
-                    np.random.shuffle(shuffled_pos_index)
-
-                    seq_1hot_mut[0, shuffled_pos_index, :] = seq_1hot_wt[0, pos_index, :]
-                else:  # dinuc-shuffle
-                    shuffled_pos_index = [
-                        [pos_index[pos_j], pos_index[pos_j + 1]]
-                        if pos_j + 1 < pos_index.shape[0] else [pos_index[pos_j]]
-                        for pos_j in range(0, pos_index.shape[0], 2)
-                    ]
-
-                    shuffled_shuffle_index = np.arange(len(shuffled_pos_index), dtype="int32")
-                    np.random.shuffle(shuffled_shuffle_index)
-
-                    shuffled_pos_index_new = []
-                    for pos_tuple_i in range(len(shuffled_pos_index)):
-                        shuffled_pos_index_new.extend(
-                            shuffled_pos_index[shuffled_shuffle_index[pos_tuple_i]]
-                        )
-
-                    shuffled_pos_index = np.array(shuffled_pos_index_new, dtype="int32")
-                    seq_1hot_mut[0, shuffled_pos_index, :] = seq_1hot_wt[0, pos_index, :]
-            
-                # convert to tf tensor
-                seq_1hot_mut_tf = tf.convert_to_tensor(seq_1hot_mut, dtype=tf.float32)
-
-                # get mut pred
-                score_mut = _score_func(model, seq_1hot_mut_tf, target_slice, pos_slice, pos_mask, pos_slice_denom, pos_mask_denom, track_scale, track_transform, clip_soft, pseudo_count, no_transform, aggregate_tracks, use_mean, use_ratio, use_logodds).numpy()
-
-                pred_shuffle[j, sample_ix, :] = score_wt - score_mut
-
-    pred_ism = np.tile(np.mean(pred_shuffle, axis=1, keepdims=True), (1, 4, 1)) * seq_1hot_wt[0, ..., None]
-    
-    return pred_ism
 
 
 ################################################################################
@@ -252,8 +70,8 @@ def main():
     parser.add_option(
         "--rc",
         dest="rc",
-        default=0,
-        type="int",
+        default=False,
+        action="store_true",
         help="Ensemble forward and reverse complement predictions [Default: %default]",
     )
     parser.add_option(
@@ -261,7 +79,21 @@ def main():
         dest="folds",
         default="0",
         type="str",
-        help="Model folds to use in ensemble [Default: %default]",
+        help="Model folds to use in ensemble (comma-separated list) [Default: %default]",
+    )
+    parser.add_option(
+        '-c',
+        dest='crosses',
+        default=1,
+        type='int',
+        help='Number of cross-fold rounds [Default:%default]',
+    )
+    parser.add_option(
+        "--head",
+        dest="head_i",
+        default=0,
+        type="int",
+        help="Model head index [Default: %default]",
     )
     parser.add_option(
         "--shifts",
@@ -273,8 +105,8 @@ def main():
     parser.add_option(
         "--span",
         dest="span",
-        default=0,
-        type="int",
+        default=False,
+        action="store_true",
         help="Aggregate entire gene span [Default: %default]",
     )
     parser.add_option(
@@ -285,10 +117,31 @@ def main():
         help="Model clip_soft setting [Default: %default]",
     )
     parser.add_option(
-        "--no_transform",
-        dest="no_transform",
-        default=0,
-        type="int",
+        "--track_scale",
+        dest="track_scale",
+        default=0.02,
+        type="float",
+        help="Target transform scale [Default: %default]",
+    )
+    parser.add_option(
+        "--track_transform",
+        dest="track_transform",
+        default=0.75,
+        type="float",
+        help="Target transform exponent [Default: %default]",
+    )
+    parser.add_option(
+        "--untransform_old",
+        dest="untransform_old",
+        default=False,
+        action="store_true",
+        help="Run gradients with old version of inverse transforms [Default: %default]",
+    )
+    parser.add_option(
+        "--no_untransform",
+        dest="no_untransform",
+        default=False,
+        action="store_true",
         help="Run gradients with no inverse transforms [Default: %default]",
     )
     parser.add_option(
@@ -343,15 +196,15 @@ def main():
     parser.add_option(
         '--mononuc_shuffle',
         dest='mononuc_shuffle',
-        default=0,
-        type='int',
+        default=False,
+        action="store_true",
         help='Mono-nucleotide shuffle [Default: %default]',
     )
     parser.add_option(
         '--dinuc_shuffle',
         dest='dinuc_shuffle',
-        default=0,
-        type='int',
+        default=False,
+        action="store_true",
         help='Di-nucleotide shuffle [Default: %default]',
     )
     (options, args) = parser.parse_args()
@@ -398,7 +251,10 @@ def main():
     # load first model fold to get parameters
 
     seqnn_model = seqnn.SeqNN(params_model)
-    seqnn_model.restore(model_folder + "/f0c0/model0_best.h5", 0, by_name=False)
+    seqnn_model.restore(
+        model_folder + "/f" + str(options.folds[0]) + "c0/train/model" + str(options.head_i) + "_best.h5",
+        options.head_i
+    )
     seqnn_model.build_slice(targets_df.index, False)
     # seqnn_model.build_ensemble(options.rc, options.shifts)
 
@@ -498,128 +354,131 @@ def main():
     
     # loop over folds
     for fold_ix in options.folds :
-        print("-- Fold = " + str(fold_ix) + " --")
-        
-        # (re-)initialize HDF5
-        scores_h5_file = '%s/ism_f%dc0.h5' % (options.out_dir, fold_ix)
-        if os.path.isfile(scores_h5_file):
-            os.remove(scores_h5_file)
-        scores_h5 = h5py.File(scores_h5_file, 'w')
-        scores_h5.create_dataset('seqs', dtype='bool',
-            shape=(num_genes, seq_len, 4))
-        scores_h5.create_dataset('isms', dtype='float16',
-            shape=(num_genes, seq_len, 4, num_targets // (options.aggregate_tracks if options.aggregate_tracks is not None else 1)))
-        scores_h5.create_dataset('gene', data=np.array(gene_list, dtype='S'))
-        scores_h5.create_dataset('chr', data=np.array(genes_chr, dtype='S'))
-        scores_h5.create_dataset('start', data=np.array(genes_start))
-        scores_h5.create_dataset('end', data=np.array(genes_end))
-        scores_h5.create_dataset('strand', data=np.array(genes_strand, dtype='S'))
-        
-        # load model fold
-        seqnn_model = seqnn.SeqNN(params_model)
-        seqnn_model.restore(model_folder + "/f" + str(fold_ix) + "c0/model0_best.h5", 0, by_name=False)
-        seqnn_model.build_slice(targets_df.index, False)
-    
-        track_scale = targets_df.iloc[0]['scale']
-        track_transform = 3. / 4.
-
-        for shift in options.shifts :
-            print('Processing shift %d' % shift, flush=True)
-
-            for rev_comp in ([False, True] if options.rc == 1 else [False]) :
-
-                if options.rc == 1 :
-                    print('Fwd/rev = %s' % ('fwd' if not rev_comp else 'rev'), flush=True)
-
-                for gi, gene_id in enumerate(gene_list):
-                    
-                    if gi % 5 == 0 :
-                        print('Processing %d, %s' % (gi, gene_id), flush=True)
-                    
-                    gene = transcriptome.genes[gene_id]
-
-                    # make sequence
-                    seq_1hot = make_seq_1hot(genome_open, genes_chr[gi], genes_start[gi], genes_end[gi], seq_len)
-                    seq_1hot = dna_io.hot1_augment(seq_1hot, shift=shift)
-
-                    # determine output sequence start
-                    seq_out_start = genes_start[gi] + model_stride*model_crop
-                    seq_out_len = model_stride*target_length
-
-                    # determine output positions
-                    gene_slice = gene.output_slice(seq_out_start, seq_out_len, model_stride, options.span == 1)
-                    
-                    # get ism window regions
-                    gene_ism_regions = genes_ism_regions[gi]
-
-                    if rev_comp:
-                        seq_1hot = dna_io.hot1_rc(seq_1hot)
-                        gene_slice = target_length - gene_slice - 1
-                        
-                        gene_ism_regions = []
-                        for [genes_ism_start_orig, gene_ism_end_orig] in genes_ism_regions[gi] :
-                            gene_ism_start = seq_len - gene_ism_end_orig - 1
-                            gene_ism_end = seq_len - genes_ism_start_orig - 1
-                            
-                            gene_ism_regions.append([gene_ism_start, gene_ism_end])
-
-                    # slice relevant strand targets
-                    if genes_strand[gi] == '+':
-                        gene_strand_mask = (targets_df.strand != '-') if not rev_comp else (targets_df.strand != '+')
-                    else:
-                        gene_strand_mask = (targets_df.strand != '+') if not rev_comp else (targets_df.strand != '-')
-
-                    gene_target = np.array(targets_df.index[gene_strand_mask].values)
-
-                    # broadcast to singleton batch
-                    seq_1hot = seq_1hot[None, ...]
-                    gene_slice = gene_slice[None, ...]
-                    gene_target = gene_target[None, ...]
-
-                    # ism computation
-                    ism = get_ism_shuffle(
-                            seqnn_model,
-                            seq_1hot,
-                            gene_ism_regions,
-                            head_i=0,
-                            target_slice=gene_target,
-                            pos_slice=gene_slice,
-                            track_scale=track_scale,
-                            track_transform=track_transform,
-                            clip_soft=options.clip_soft,
-                            pseudo_count=pseudo_count,
-                            no_transform=options.no_transform == 1,
-                            aggregate_tracks=options.aggregate_tracks,
-                            use_mean=False,
-                            use_ratio=False,
-                            use_logodds=False,
-                            window_size=options.window_size,
-                            n_samples=options.n_samples,
-                            mononuc_shuffle=options.mononuc_shuffle == 1,
-                            dinuc_shuffle=options.dinuc_shuffle == 1,
-                    )
-
-                    # undo augmentations and save ism
-                    ism = unaugment_grads(ism, fwdrc=(not rev_comp), shift=shift)
-                    
-                    # write to HDF5
-                    scores_h5['isms'][gi] += ism[:, ...]
-                    
-                    # collect garbage
-                    gc.collect()
-
-        # save sequences and normalize isms by total size of ensemble
-        for gi, gene_id in enumerate(gene_list):
-        
-            # re-make original sequence
-            seq_1hot = make_seq_1hot(genome_open, genes_chr[gi], genes_start[gi], genes_end[gi], seq_len)
+        for cross_ix in options.crosses:
             
-            # write to HDF5
-            scores_h5['seqs'][gi] = seq_1hot[:, ...]
-            scores_h5['isms'][gi] /= float((len(options.shifts) * (2 if options.rc == 1 else 1)))
-        
-        # collect garbage
-        gc.collect()
+            print("-- fold = f" + str(fold_ix) + "c" + str(cross_ix) + " --")
+
+            # (re-)initialize HDF5
+            scores_h5_file = '%s/ism_f%dc%d.h5' % (options.out_dir, fold_ix, cross_ix)
+            if os.path.isfile(scores_h5_file):
+                os.remove(scores_h5_file)
+            scores_h5 = h5py.File(scores_h5_file, 'w')
+            scores_h5.create_dataset('seqs', dtype='bool',
+                shape=(num_genes, seq_len, 4))
+            scores_h5.create_dataset('isms', dtype='float16',
+                shape=(num_genes, seq_len, 4, num_targets // (options.aggregate_tracks if options.aggregate_tracks is not None else 1)))
+            scores_h5.create_dataset('gene', data=np.array(gene_list, dtype='S'))
+            scores_h5.create_dataset('chr', data=np.array(genes_chr, dtype='S'))
+            scores_h5.create_dataset('start', data=np.array(genes_start))
+            scores_h5.create_dataset('end', data=np.array(genes_end))
+            scores_h5.create_dataset('strand', data=np.array(genes_strand, dtype='S'))
+
+            # load model fold
+            seqnn_model = seqnn.SeqNN(params_model)
+            seqnn_model.restore(
+                model_folder + "/f" + str(fold_ix) + "c" + str(cross_ix) + "/train/model" + str(options.head_i) + "_best.h5",
+                options.head_i
+            )
+            seqnn_model.build_slice(targets_df.index, False)
+
+            for shift in options.shifts :
+                print('Processing shift %d' % shift, flush=True)
+
+                for rev_comp in ([False, True] if options.rc else [False]) :
+
+                    if options.rc :
+                        print('Fwd/rev = %s' % ('fwd' if not rev_comp else 'rev'), flush=True)
+
+                    for gi, gene_id in enumerate(gene_list):
+
+                        if gi % 5 == 0 :
+                            print('Processing %d, %s' % (gi, gene_id), flush=True)
+
+                        gene = transcriptome.genes[gene_id]
+
+                        # make sequence
+                        seq_1hot = make_seq_1hot(genome_open, genes_chr[gi], genes_start[gi], genes_end[gi], seq_len)
+                        seq_1hot = dna_io.hot1_augment(seq_1hot, shift=shift)
+
+                        # determine output sequence start
+                        seq_out_start = genes_start[gi] + model_stride*model_crop
+                        seq_out_len = model_stride*target_length
+
+                        # determine output positions
+                        gene_slice = gene.output_slice(seq_out_start, seq_out_len, model_stride, options.span)
+
+                        # get ism window regions
+                        gene_ism_regions = genes_ism_regions[gi]
+
+                        if rev_comp:
+                            seq_1hot = dna_io.hot1_rc(seq_1hot)
+                            gene_slice = target_length - gene_slice - 1
+
+                            gene_ism_regions = []
+                            for [genes_ism_start_orig, gene_ism_end_orig] in genes_ism_regions[gi] :
+                                gene_ism_start = seq_len - gene_ism_end_orig - 1
+                                gene_ism_end = seq_len - genes_ism_start_orig - 1
+
+                                gene_ism_regions.append([gene_ism_start, gene_ism_end])
+
+                        # slice relevant strand targets
+                        if genes_strand[gi] == '+':
+                            gene_strand_mask = (targets_df.strand != '-') if not rev_comp else (targets_df.strand != '+')
+                        else:
+                            gene_strand_mask = (targets_df.strand != '+') if not rev_comp else (targets_df.strand != '-')
+
+                        gene_target = np.array(targets_df.index[gene_strand_mask].values)
+
+                        # broadcast to singleton batch
+                        seq_1hot = seq_1hot[None, ...]
+                        gene_slice = gene_slice[None, ...]
+                        gene_target = gene_target[None, ...]
+
+                        # ism computation
+                        ism = get_ism_shuffle(
+                                seqnn_model,
+                                seq_1hot,
+                                gene_ism_regions,
+                                head_i=0,
+                                target_slice=gene_target,
+                                pos_slice=gene_slice,
+                                track_scale=options.track_scale,
+                                track_transform=options.track_transform,
+                                clip_soft=options.clip_soft,
+                                pseudo_count=pseudo_count,
+                                untransform_old=options.untransform_old,
+                                no_untransform=options.no_untransform,
+                                aggregate_tracks=options.aggregate_tracks,
+                                use_mean=False,
+                                use_ratio=False,
+                                use_logodds=False,
+                                window_size=options.window_size,
+                                n_samples=options.n_samples,
+                                mononuc_shuffle=options.mononuc_shuffle,
+                                dinuc_shuffle=options.dinuc_shuffle,
+                        )
+
+                        # undo augmentations and save ism
+                        ism = unaugment_grads(ism, fwdrc=(not rev_comp), shift=shift)
+
+                        # write to HDF5
+                        scores_h5['isms'][gi] += ism[:, ...]
+
+                        # collect garbage
+                        gc.collect()
+
+            # save sequences and normalize isms by total size of ensemble
+            for gi, gene_id in enumerate(gene_list):
+
+                # re-make original sequence
+                seq_1hot = make_seq_1hot(genome_open, genes_chr[gi], genes_start[gi], genes_end[gi], seq_len)
+
+                # write to HDF5
+                scores_h5['seqs'][gi] = seq_1hot[:, ...]
+                scores_h5['isms'][gi] /= float((len(options.shifts) * (2 if options.rc else 1)))
+
+            # collect garbage
+            gc.collect()
 
     # close files
     genome_open.close()
@@ -669,6 +528,205 @@ def make_seq_1hot(genome_open, chrm, start, end, seq_len):
 
     seq_1hot = dna_io.dna_1hot(seq_dna)
     return seq_1hot
+
+
+# tf code for computing ISM scores on GPU
+@tf.function
+def _score_func(model, seq_1hot, target_slice, pos_slice, pos_mask=None, pos_slice_denom=None, pos_mask_denom=True, track_scale=1., track_transform=1., clip_soft=None, pseudo_count=0., untransform_old=False, no_untransform=False, aggregate_tracks=None, use_mean=False, use_ratio=False, use_logodds=False) :
+            
+    # predict
+    preds = tf.gather(model(seq_1hot, training=False), target_slice, axis=-1, batch_dims=1)
+
+    if not no_untransform:
+        if untransform_old:
+            # undo scale
+            preds = preds / track_scale
+
+            # undo soft_clip
+            if clip_soft is not None:
+                preds = tf.where(
+                    preds > clip_soft, (preds - clip_soft) ** 2 + clip_soft, preds
+                )
+
+            # undo sqrt
+            preds = preds ** (1. / track_transform)
+        else:
+            # undo clip_soft
+            if clip_soft is not None:
+                preds = tf.where(
+                    preds > clip_soft, (preds - clip_soft + 1) ** 2 + clip_soft - 1, preds
+                )
+
+            # undo sqrt
+            preds = -1 + (preds + 1) ** (1. / track_transform)
+
+            # scale
+            preds = preds / track_scale
+
+    if aggregate_tracks is not None :
+        preds = tf.reduce_mean(tf.reshape(preds, (preds.shape[0], preds.shape[1], preds.shape[2] // aggregate_tracks, aggregate_tracks)), axis=-1)
+
+    # slice specified positions
+    preds_slice = tf.gather(preds, pos_slice, axis=1, batch_dims=1)
+    if pos_mask is not None :
+        preds_slice = preds_slice * pos_mask
+
+    # slice denominator positions
+    if use_ratio and pos_slice_denom is not None:
+        preds_slice_denom = tf.gather(preds, pos_slice_denom, axis=1, batch_dims=1)
+        if pos_mask_denom is not None :
+            preds_slice_denom = preds_slice_denom * pos_mask_denom
+
+    # aggregate over positions
+    if not use_mean :
+        preds_agg = tf.reduce_sum(preds_slice, axis=1)
+        if use_ratio and pos_slice_denom is not None:
+            preds_agg_denom = tf.reduce_sum(preds_slice_denom, axis=1)
+    else :
+        if pos_mask is not None :
+            preds_agg = tf.reduce_sum(preds_slice, axis=1) / tf.reduce_sum(pos_mask, axis=1)
+        else :
+            preds_agg = tf.reduce_mean(preds_slice, axis=1)
+
+        if use_ratio and pos_slice_denom is not None:
+            if pos_mask_denom is not None :
+                preds_agg_denom = tf.reduce_sum(preds_slice_denom, axis=1) / tf.reduce_sum(pos_mask_denom, axis=1)
+            else :
+                preds_agg_denom = tf.reduce_mean(preds_slice_denom, axis=1)
+
+    # compute final statistic
+    if no_untransform :
+        score_ratios = preds_agg
+    elif not use_ratio :
+        score_ratios = tf.math.log(preds_agg + pseudo_count + 1e-6)
+    else :
+        if not use_logodds :
+            score_ratios = tf.math.log((preds_agg + pseudo_count) / (preds_agg_denom + pseudo_count) + 1e-6)
+        else :
+            score_ratios = tf.math.log(((preds_agg + pseudo_count) / (preds_agg_denom + pseudo_count)) / (1. - ((preds_agg + pseudo_count) / (preds_agg_denom + pseudo_count))) + 1e-6)
+
+    return score_ratios
+
+
+def get_ism_shuffle(seqnn_model, seq_1hot_wt, ism_regions, head_i=None, target_slice=None, pos_slice=None, pos_mask=None, pos_slice_denom=None, pos_mask_denom=None, track_scale=1., track_transform=1., clip_soft=None, pseudo_count=0., untransform_old=False, no_untransform=False, aggregate_tracks=None, use_mean=False, use_ratio=False, use_logodds=False, bases=[0, 1, 2, 3], window_size=5, n_samples=8, mononuc_shuffle=False, dinuc_shuffle=False) :
+    
+    # choose model
+    if seqnn_model.ensemble is not None:
+        model = seqnn_model.ensemble
+    elif head_i is not None:
+        model = seqnn_model.models[head_i]
+    else:
+        model = seqnn_model.model
+    
+    # verify tensor shape(s)
+    seq_1hot_wt = seq_1hot_wt.astype('float32')
+    target_slice = np.array(target_slice).astype('int32')
+    pos_slice = np.array(pos_slice).astype('int32')
+    
+    # convert constants to tf tensors
+    track_scale = tf.constant(track_scale, dtype=tf.float32)
+    track_transform = tf.constant(track_transform, dtype=tf.float32)
+    if clip_soft is not None :
+        clip_soft = tf.constant(clip_soft, dtype=tf.float32)
+    pseudo_count = tf.constant(pseudo_count, dtype=tf.float32)
+    
+    if pos_mask is not None :
+        pos_mask = np.array(pos_mask).astype('float32')
+    
+    if use_ratio and pos_slice_denom is not None :
+        pos_slice_denom = np.array(pos_slice_denom).astype('int32')
+      
+        if pos_mask_denom is not None :
+            pos_mask_denom = np.array(pos_mask_denom).astype('float32')
+    
+    if len(seq_1hot_wt.shape) < 3:
+        seq_1hot_wt = seq_1hot_wt[None, ...]
+    
+    if len(target_slice.shape) < 2:
+        target_slice = target_slice[None, ...]
+    
+    if len(pos_slice.shape) < 2:
+        pos_slice = pos_slice[None, ...]
+    
+    if pos_mask is not None and len(pos_mask.shape) < 2:
+        pos_mask = pos_mask[None, ...]
+    
+    if use_ratio and pos_slice_denom is not None and len(pos_slice_denom.shape) < 2:
+        pos_slice_denom = pos_slice_denom[None, ...]
+      
+        if pos_mask_denom is not None and len(pos_mask_denom.shape) < 2:
+            pos_mask_denom = pos_mask_denom[None, ...]
+    
+    # convert to tf tensors
+    seq_1hot_wt_tf = tf.convert_to_tensor(seq_1hot_wt, dtype=tf.float32)
+    target_slice = tf.convert_to_tensor(target_slice, dtype=tf.int32)
+    pos_slice = tf.convert_to_tensor(pos_slice, dtype=tf.int32)
+    
+    if pos_mask is not None :
+        pos_mask = tf.convert_to_tensor(pos_mask, dtype=tf.float32)
+    
+    if use_ratio and pos_slice_denom is not None :
+        pos_slice_denom = tf.convert_to_tensor(pos_slice_denom, dtype=tf.int32)
+    
+        if pos_mask_denom is not None :
+            pos_mask_denom = tf.convert_to_tensor(pos_mask_denom, dtype=tf.float32)
+    
+    # allocate ism shuffle result tensor
+    pred_shuffle = np.zeros((seq_1hot_wt.shape[1], n_samples, target_slice.shape[1] // (aggregate_tracks if aggregate_tracks is not None else 1)))
+    
+    # get wt pred
+    score_wt = _score_func(model, seq_1hot_wt_tf, target_slice, pos_slice, pos_mask, pos_slice_denom, pos_mask_denom, track_scale, track_transform, clip_soft, pseudo_count, untransform_old, no_untransform, aggregate_tracks, use_mean, use_ratio, use_logodds).numpy()
+    
+    for ism_region_i, [ism_start, ism_end] in enumerate(ism_regions) :
+        for j in range(ism_start, ism_end) :
+            j_start = j - window_size // 2
+            j_end = j + window_size // 2 + 1
+
+            pos_index = np.arange(j_end - j_start) + j_start
+            
+            for sample_ix in range(n_samples):
+                seq_1hot_mut = np.copy(seq_1hot_wt)
+                seq_1hot_mut[0, j_start:j_end, :] = 0.
+                
+                if not mononuc_shuffle and not dinuc_shuffle:
+                    nt_index = np.random.choice(bases, size=(j_end - j_start,)).tolist()
+                    seq_1hot_mut[0, pos_index, nt_index] = 1.
+                elif mononuc_shuffle:
+                    shuffled_pos_index = np.copy(pos_index)
+                    np.random.shuffle(shuffled_pos_index)
+
+                    seq_1hot_mut[0, shuffled_pos_index, :] = seq_1hot_wt[0, pos_index, :]
+                else:  # dinuc-shuffle
+                    shuffled_pos_index = [
+                        [pos_index[pos_j], pos_index[pos_j + 1]]
+                        if pos_j + 1 < pos_index.shape[0] else [pos_index[pos_j]]
+                        for pos_j in range(0, pos_index.shape[0], 2)
+                    ]
+
+                    shuffled_shuffle_index = np.arange(len(shuffled_pos_index), dtype="int32")
+                    np.random.shuffle(shuffled_shuffle_index)
+
+                    shuffled_pos_index_new = []
+                    for pos_tuple_i in range(len(shuffled_pos_index)):
+                        shuffled_pos_index_new.extend(
+                            shuffled_pos_index[shuffled_shuffle_index[pos_tuple_i]]
+                        )
+
+                    shuffled_pos_index = np.array(shuffled_pos_index_new, dtype="int32")
+                    seq_1hot_mut[0, shuffled_pos_index, :] = seq_1hot_wt[0, pos_index, :]
+            
+                # convert to tf tensor
+                seq_1hot_mut_tf = tf.convert_to_tensor(seq_1hot_mut, dtype=tf.float32)
+
+                # get mut pred
+                score_mut = _score_func(model, seq_1hot_mut_tf, target_slice, pos_slice, pos_mask, pos_slice_denom, pos_mask_denom, track_scale, track_transform, clip_soft, pseudo_count, untransform_old, no_untransform, aggregate_tracks, use_mean, use_ratio, use_logodds).numpy()
+
+                pred_shuffle[j, sample_ix, :] = score_wt - score_mut
+
+    pred_ism = np.tile(np.mean(pred_shuffle, axis=1, keepdims=True), (1, 4, 1)) * seq_1hot_wt[0, ..., None]
+    
+    return pred_ism
+
 
 ################################################################################
 # __main__

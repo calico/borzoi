@@ -31,7 +31,7 @@ import slurm
 """
 borzoi_bench_gtex_folds.py
 
-Benchmark Basenji model replicates on GTEx eQTL coefficient task.
+Benchmark Borzoi model replicates on GTEx eQTL coefficient task.
 """
 
 ################################################################################
@@ -53,7 +53,7 @@ def main():
     sed_options.add_option(
         '-f',
         dest='genome_fasta',
-        default='%s/data/hg38.fa' % os.environ['BASENJIDIR'],
+        default='%s/assembly/ucsc/hg38.fa' % os.environ['HG38'],
         help='Genome FASTA for sequences [Default: %default]',
     )
     sed_options.add_option(
@@ -126,6 +126,19 @@ def main():
         help='Number of cross-fold rounds [Default:%default]',
     )
     fold_options.add_option(
+        '--folds',
+        dest='fold_subset',
+        default=1,
+        type='int',
+        help='Run a subset of folds [Default:%default]',
+    )
+    fold_options.add_option(
+        '--f_list',
+        dest='fold_subset_list',
+        default=None,
+        help='Run a subset of folds (encoded as comma-separated string) [Default:%default]',
+    )
+    fold_options.add_option(
         '-d',
         dest='data_head',
         default=None,
@@ -161,7 +174,7 @@ def main():
         dest='processes',
         default=None,
         type='int',
-        help='Number of processes, passed by multi script. (Unused, but needs to appear as dummy.)',
+        help='Number of processes, passed by multi script.',
     )
     fold_options.add_option(
         '-q',
@@ -182,21 +195,16 @@ def main():
     #######################################################
     # prep work
 
-    # count folds
-    num_folds = 0
-    fold0_dir = '%s/f%dc0' % (exp_dir, num_folds)
-    model_file = '%s/train/model_best.h5' % fold0_dir
-    if options.data_head is not None:
-        model_file = '%s/train/model%d_best.h5' % (fold0_dir, options.data_head)
-    while os.path.isfile(model_file):
-        num_folds += 1
-        fold0_dir = '%s/f%dc0' % (exp_dir, num_folds)
-        model_file = '%s/train/model_best.h5' % fold0_dir
-        if options.data_head is not None:
-            model_file = '%s/train/model%d_best.h5' % (fold0_dir, options.data_head)
-    print('Found %d folds' % num_folds)
-    if num_folds == 0:
-        exit(1)
+    # set folds
+    num_folds = 1
+    if options.fold_subset is not None:
+        num_folds = options.fold_subset
+  
+    fold_index = [fold_i for fold_i in range(num_folds)]
+
+    # subset folds (list)
+    if options.fold_subset_list is not None:
+        fold_index = [int(fold_str) for fold_str in options.fold_subset_list.split(",")]
 
     # extract output subdirectory name
     gtex_out_dir = options.out_dir
@@ -219,7 +227,7 @@ def main():
     jobs = []
 
     for ci in range(options.crosses):
-        for fi in range(num_folds):
+        for fi in fold_index:
             it_dir = '%s/f%dc%d' % (exp_dir, fi, ci)
             name = '%s-f%dc%d' % (options.name, fi, ci)
 
@@ -293,7 +301,7 @@ def main():
     # collect output
 
     for ci in range(options.crosses):
-        for fi in range(num_folds):
+        for fi in fold_index:
             it_out_dir = '%s/f%dc%d/%s' % (exp_dir, fi, ci, gtex_out_dir)
 
             # collect negatives
@@ -311,7 +319,7 @@ def main():
     # split study/tissue variants
 
     for ci in range(options.crosses):
-        for fi in range(num_folds):
+        for fi in fold_index:
             it_out_dir = '%s/f%dc%d/%s' % (exp_dir, fi, ci, gtex_out_dir)
             print(it_out_dir)
 
@@ -341,7 +349,7 @@ def main():
         sed_pos_files = []
         sed_neg_files = []
         for ci in range(options.crosses):
-            for fi in range(num_folds):
+            for fi in fold_index:
                 it_dir = '%s/f%dc%d' % (exp_dir, fi, ci)
                 it_out_dir = '%s/%s' % (it_dir, gtex_out_dir)
                 
@@ -372,7 +380,7 @@ def main():
 
     jobs = []
     for ci in range(options.crosses):
-        for fi in range(num_folds):
+        for fi in fold_index:
             it_dir = '%s/f%dc%d' % (exp_dir, fi, ci)
             it_out_dir = '%s/%s' % (it_dir, gtex_out_dir)
             
