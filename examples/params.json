@@ -1,6 +1,6 @@
 {
     "train": {
-        "batch_size": 2,
+        "batch_size": 1,
         "shuffle_buffer": 256,
         "optimizer": "adam",
         "learning_rate": 0.00006,
@@ -15,7 +15,6 @@
         "train_epochs_max": 180
     },
     "model": {
-        "verbose": false,
         "seq_length": 524288,
         "augment_rc": true,
         "augment_shift": 3,
@@ -66,7 +65,7 @@
             },
             {
                 "name": "Cropping1D",
-                "cropping": 16
+                "cropping": 5120
             },
             {
                 "name": "conv_nac",

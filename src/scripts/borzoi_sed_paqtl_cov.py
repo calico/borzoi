@@ -48,19 +48,20 @@ def main():
     parser.add_option(
         "-f",
         dest="genome_fasta",
-        default="%s/assembly/ucsc/hg38.fa" % os.environ["HG38"],
+        default="%s/assembly/ucsc/hg38.fa" % os.environ.get('BORZOI_HG38', 'hg38'),
         help="Genome FASTA for sequences [Default: %default]",
     )
     parser.add_option(
         "-g",
         dest="genes_gtf",
-        default="%s/genes/gencode41/gencode41_basic_nort.gtf" % os.environ["HG38"],
+        default="%s/genes/gencode41/gencode41_basic_nort.gtf" % os.environ.get('BORZOI_HG38', 'hg38'),
         help="GTF for gene definition [Default %default]",
     )
     parser.add_option(
         "--apafile",
         dest="apa_file",
-        default="polyadb_human_v3.csv.gz"
+        default="%s/genes/polyadb/polyadb_human_v3.csv.gz" % os.environ.get('BORZOI_HG38', 'hg38'),
+        help="Csv for polya site definition [Default %default]",
     )
     parser.add_option(
         "-o",

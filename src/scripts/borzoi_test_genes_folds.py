@@ -148,7 +148,7 @@ def main():
     parser.add_option(
         "-g",
         dest="genes_gtf",
-        default="%s/genes/gencode41/gencode41_basic_protein.gtf" % os.environ["HG38"],
+        default="%s/genes/gencode41/gencode41_basic_protein.gtf" % os.environ.get('BORZOI_HG38', 'hg38'),
     )
     parser.add_option(
         "--label_exp",
@@ -268,8 +268,8 @@ def main():
                 pass
             else:
                 # evaluate
-                cmd = ". /home/drk/anaconda3/etc/profile.d/conda.sh;"
-                cmd += " conda activate %s;" % options.conda_env
+                cmd = ('. %s; ' % os.environ['BORZOI_CONDA']) if 'BORZOI_CONDA' in os.environ else ''
+                cmd += "conda activate %s;" % options.conda_env
                 cmd += " time borzoi_test_genes.py"
                 cmd += ' --head %d' % head_i
                 cmd += " -o %s" % out_dir

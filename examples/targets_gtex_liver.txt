@@ -1,0 +1,4 @@
+	identifier	file	clip	clip_soft	scale	sum_stat	strand_pair	description
+7563	GTEX-11EQ9-0526-SM-5A5JZ.1	/home/drk/tillage/datasets/human/rna/recount3/liver/GTEX-11EQ9-0526-SM-5A5JZ.1/coverage.w5	768	384	0.01	sum_sqrt	7563	RNA:liver
+7564	GTEX-1QP66-0226-SM-DPRXS.1	/home/drk/tillage/datasets/human/rna/recount3/liver/GTEX-1QP66-0226-SM-DPRXS.1/coverage.w5	768	384	0.01	sum_sqrt	7564	RNA:liver
+7565	GTEX-ZYT6-0626-SM-5E45V.1	/home/drk/tillage/datasets/human/rna/recount3/liver/GTEX-ZYT6-0626-SM-5E45V.1/coverage.w5	768	384	0.01	sum_sqrt	7565	RNA:liver

@@ -1,27 +1,50 @@
 [build-system]
-requires = [
-    "setuptools>=45",
-    "wheel",
-    "setuptools_scm>=6.2"
-]
+requires = ["setuptools>=69.0.3", "setuptools_scm>=8.0.4"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "borzoi"
+description = "borzoi"
 authors = [
     {name = "David Kelley", email = "drk@calicolabs.com"},
     {name = "Johannes Linder", email = "jlinder@calicolabs.com"}
 ]
 readme = "README.md"
-requires-python = ">=3.8, <3.11"
 classifiers = ["License :: OSI Approved :: Apache License"]
-dynamic = ["version", "description"]
+dynamic = ["version"]
+
+requires-python = ">=3.9"
+dependencies = [
+    "h5py~=3.10.0",
+    "intervaltree~=3.1.0",
+    "joblib~=1.1.1",
+    "matplotlib~=3.7.1",
+    "google-cloud-storage~=2.0.0",
+    "natsort~=7.1.1",
+    "networkx~=2.8.4",
+    "numpy~=1.24.3",
+    "pandas~=1.5.3",
+    "pybigwig~=0.3.18",
+    "pybedtools~=0.10.0",
+    "pysam~=0.22.0",
+    "qnorm~=0.8.1",
+    "seaborn~=0.12.2",
+    "scikit-learn~=1.2.2",
+    "scipy~=1.9.1",
+    "tensorflow~=2.15.0",
+    "tqdm~=4.65.0",
+    "pyfaidx~=0.7.1",
+    "pyranges~=0.0.129",
+]
 
 [project.optional-dependencies]
 dev = [
-    "black==22.3.0",
-    "pytest==7.1.2"
+    "black~=23.12.1",
+    "pytest~=7.4.4",
+    "ruff~=0.1.11",
 ]
 
-[tool.setuptools_scm]
+[project.urls]
+Homepage = "https://github.com/calico/borzoi"
 
+[tool.setuptools_scm]

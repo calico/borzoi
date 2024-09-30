@@ -24,7 +24,7 @@ import numpy as np
 import pandas as pd
 import pysam
 
-from baskerville import dna_io
+from baskerville import dna as dna_io
 from baskerville import seqnn
 from baskerville import stream
 
@@ -48,7 +48,7 @@ def main():
     parser.add_option(
         "-f",
         dest="fasta",
-        default="%s/assembly/ucsc/hg38.fa" % os.environ["HG38"],
+        default="%s/assembly/ucsc/hg38.fa" % os.environ.get('BORZOI_HG38', 'hg38'),
         help="Genome FASTA for sequences [Default: %default]",
     )
     parser.add_option(

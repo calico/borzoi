@@ -36,7 +36,7 @@ def main():
     trip_options.add_option(
         "-f",
         dest="genome_fasta",
-        default="%s/assembly/ucsc/hg38.fa" % os.environ["HG38"],
+        default="%s/assembly/ucsc/hg38.fa" % os.environ.get('BORZOI_HG38', 'hg38'),
         help="Genome FASTA for sequences [Default: %default]",
     )
     trip_options.add_option(
@@ -184,8 +184,8 @@ def main():
     # TRIP prediction jobs
 
     # command base
-    cmd_base = ". /home/drk/anaconda3/etc/profile.d/conda.sh;"
-    cmd_base += " conda activate %s;" % options.conda_env
+    cmd_base = ('. %s; ' % os.environ['BORZOI_CONDA']) if 'BORZOI_CONDA' in os.environ else ''
+    cmd_base += "conda activate %s;" % options.conda_env
     cmd_base += " echo $HOSTNAME;"
 
     jobs = []

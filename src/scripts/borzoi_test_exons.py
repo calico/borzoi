@@ -99,6 +99,13 @@ def main():
         default=None,
         help="TFR pattern string appended to data_dir/tfrecords for subsetting [Default: %default]",
     )
+    parser.add_option(
+        "-u",
+        dest="untransform_old",
+        default=False,
+        action="store_true",
+        help="Untransform old models [Default: %default]",
+    )
     (options, args) = parser.parse_args()
 
     if len(args) != 4:
@@ -235,7 +242,12 @@ def main():
         # predict only if gene overlaps
         yh = None
         y = y.numpy()[..., targets_df.index]
-        y = dataset.untransform_preds1(y, targets_df, unscale=True)
+        
+        # untransform
+        if options.untransform_old:
+            y = dataset.untransform_preds1(y, targets_df, unscale=True)
+        else:
+            y = dataset.untransform_preds(y, targets_df, unscale=True)
 
         t0 = time.time()
         print("Sequence %d..." % si, end="")
@@ -268,7 +280,13 @@ def main():
                 if yh is None:
                     yh = seqnn_model(x)
                     print(yh.max(), " untransformed to ", end="")
-                    yh = dataset.untransform_preds1(yh, targets_df, unscale=True)
+                    
+                    # untransform
+                    if options.untransform_old:
+                        yh = dataset.untransform_preds1(yh, targets_df, unscale=True)
+                    else:
+                        yh = dataset.untransform_preds(yh, targets_df, unscale=True)
+                    
                     print(yh.max())
 
                 # slice gene region

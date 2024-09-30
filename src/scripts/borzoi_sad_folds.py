@@ -27,9 +27,9 @@ import pandas as pd
 import slurm
 
 """
-borzoi_sed_folds.py
+borzoi_sad_folds.py
 
-Compute SED scores across model folds.
+Compute SAD scores across model folds.
 """
 
 ################################################################################
@@ -39,81 +39,67 @@ def main():
     usage = 'usage: %prog [options] <params_file> <data_dir>'
     parser = OptionParser(usage)
 
-    # sed
-    sed_options = OptionGroup(parser, 'borzoi_sed_folds.py options')
-    sed_options.add_option(
+    # sad
+    sad_options = OptionGroup(parser, 'borzoi_sad.py options')
+    sad_options.add_option(
         '-f',
         dest='genome_fasta',
         default='%s/assembly/ucsc/hg38.fa' % os.environ.get('BORZOI_HG38', 'hg38'),
         help='Genome FASTA for sequences [Default: %default]',
     )
-    sed_options.add_option(
-        '-g',
-        dest='genes_gtf',
-        default='%s/genes/gencode41/gencode41_basic_nort.gtf' % os.environ.get('BORZOI_HG38', 'hg38'),
-        help='GTF for gene definition [Default %default]',
-    )
-    sed_options.add_option(
+    sad_options.add_option(
         '-o',
         dest='out_dir',
-        default='sed',
-        help='Output directory for tables and plots [Default: %default]',
+        default='sad',
+        help='Output directory for tables and plots [Default: %default]'
     )
-    sed_options.add_option(
+    sad_options.add_option(
         '-p',
         dest='processes',
         default=None,
         type='int',
-        help='Number of processes, passed by multi script',
+        help='Number of processes, passed by multi script'
     )
-    sed_options.add_option(
+    sad_options.add_option(
         '--rc',
         dest='rc',
         default=False,
         action='store_true',
-        help='Average forward and reverse complement predictions [Default: %default]',
+        help='Average forward and reverse complement predictions [Default: %default]'
     )
-    sed_options.add_option(
-        '--shifts',
-        dest='shifts',
+    sad_options.add_option(
+        '--shifts', dest='shifts',
         default='0',
         type='str',
-        help='Ensemble prediction shifts [Default: %default]',
+        help='Ensemble prediction shifts [Default: %default]'
     )
-    sed_options.add_option(
-        '--span',
-        dest='span',
-        default=False,
-        action='store_true',
-        help='Aggregate entire gene span [Default: %default]',
-    )
-    sed_options.add_option(
+    sad_options.add_option(
         '--stats',
-        dest='sed_stats',
-        default='SED',
-        help='Comma-separated list of stats to save. [Default: %default]',
+        dest='sad_stats',
+        default='SAD',
+        help='Comma-separated list of stats to save. [Default: %default]'
     )
-    sed_options.add_option(
+    sad_options.add_option(
         '-t',
         dest='targets_file',
         default=None,
         type='str',
-        help='File specifying target indexes and labels in table format',
+        help='File specifying target indexes and labels in table format'
     )
-    sed_options.add_option(
+    sad_options.add_option(
         '-u',
         dest='untransform_old',
         default=False,
         action='store_true',
     )
-    sed_options.add_option(
+    sad_options.add_option(
         '--no_untransform',
         dest='no_untransform',
         default=False,
         action='store_true',
     )
-    parser.add_option_group(sed_options)
-    
+    parser.add_option_group(sad_options)
+
     # cross-fold
     fold_options = OptionGroup(parser, 'cross-fold options')
     fold_options.add_option(
@@ -141,44 +127,44 @@ def main():
         dest='data_head',
         default=None,
         type='int',
-        help='Index for dataset/head [Default: %default]',
+        help='Index for dataset/head [Default: %default]'
     )
     fold_options.add_option(
         '-e',
         dest='conda_env',
         default='tf210',
-        help='Anaconda environment [Default: %default]',
+        help='Anaconda environment [Default: %default]'
     )
     fold_options.add_option(
         '--name',
         dest='name',
-        default='sed',
-        help='SLURM name prefix [Default: %default]',
+        default='sad',
+        help='SLURM name prefix [Default: %default]'
     )
     fold_options.add_option(
         '--max_proc',
         dest='max_proc',
         default=None,
         type='int',
-        help='Maximum concurrent processes [Default: %default]',
+        help='Maximum concurrent processes [Default: %default]'
     )
     fold_options.add_option(
         '-q',
         dest='queue',
         default='geforce',
-        help='SLURM queue on which to run the jobs [Default: %default]',
+        help='SLURM queue on which to run the jobs [Default: %default]'
     )
     fold_options.add_option(
         '-r',
         dest='restart',
         default=False,
         action='store_true',
-        help='Restart a partially completed job [Default: %default]',
+        help='Restart a partially completed job [Default: %default]'
     )
     fold_options.add_option(
         '--vcf',
         dest='vcf_file',
-        default='/home/drk/seqnn/data/gtex_fine/susie_pip90/pos_merge.vcf',
+        default='/home/jlinder/seqnn/data/satmutmpra/satmutmpra_v1.vcf'
     )
     parser.add_option_group(fold_options)
 
@@ -227,17 +213,17 @@ def main():
             if options.data_head is not None:
                 model_file = '%s/train/model%d_best.h5' % (it_dir, options.data_head)
 
-            cmd_fold = '%s time borzoi_sed.py %s %s' % (cmd_base, params_file, model_file)
+            cmd_fold = '%s time borzoi_sad.py %s %s' % (cmd_base, params_file, model_file)
 
             # variant scoring job
             job_out_dir = it_out_dir
-            if not options.restart or not os.path.isfile('%s/sed.h5'%job_out_dir):
+            if not options.restart or not os.path.isfile('%s/sad.h5'%job_out_dir):
                 cmd_job = '%s %s' % (cmd_fold, options.vcf_file)
-                cmd_job += ' %s' % options_string(options, sed_options, job_out_dir)
+                cmd_job += ' %s' % options_string(options, sad_options, job_out_dir)
                 j = slurm.Job(cmd_job, '%s' % name,
                         '%s.out'%job_out_dir, '%s.err'%job_out_dir, '%s.sb'%job_out_dir,
                         queue=options.queue, gpu=1,
-                        mem=60000, time='30-0:0:0')
+                        mem=45000, time='30-0:0:0')
                 jobs.append(j)
                 
     slurm.multi_run(jobs, max_proc=options.max_proc, verbose=True,

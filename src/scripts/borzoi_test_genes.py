@@ -425,7 +425,7 @@ def main():
         )
         acc_nr2.append(nr2_ti)
         var_mask = gene_wvar[:, ti] > wvar_t[ti]
-        wr_ti = gene_within[var_mask].mean()
+        wr_ti = gene_within[:, ti][var_mask].mean()
         acc_wpearsonr.append(wr_ti)
 
     acc_df = pd.DataFrame(

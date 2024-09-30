@@ -43,13 +43,13 @@ def main():
     parser.add_option(
         '-d',
         dest='meme_db',
-        default='/homde/drk/code/meme-5.4.1/motif_databases/CIS-BP_2.00/Homo_sapiens.meme',
+        default='meme-5.4.1/motif_databases/CIS-BP_2.00/Homo_sapiens.meme',
         help='Meme database [Default: %default]',
     )
     parser.add_option(
         '-g',
         dest='genes_gtf_file',
-        default='/home/drk/common/data/genomes/hg38/genes/gencode38/gencode38_basic_protein.gtf',
+        default='%s/genes/gencode38/gencode38_basic_protein.gtf' % os.environ.get('BORZOI_HG38', 'hg38'),
         help='Gencode GTF [Default: %default]',
     )
     parser.add_option(
@@ -361,7 +361,7 @@ def main():
     modisco_meme_open.close()
                     
     # run tomtom
-    tomtom_cmd = '/home/drk/bin/tomtom -dist pearson -thresh 0.1 -oc %s %s %s' % \
+    tomtom_cmd = 'tomtom -dist pearson -thresh 0.1 -oc %s %s %s' % \
         (options.out_dir, modisco_meme_file, options.meme_db)
     subprocess.call(tomtom_cmd, shell=True)
 
