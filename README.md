@@ -70,7 +70,7 @@ The model weights can be downloaded as .h5 files from the URLs below. We trained
 [Borzoi Replicate 2 (human)](https://storage.googleapis.com/seqnn-share/borzoi/f2/model0_best.h5) | [(mouse)](https://storage.googleapis.com/seqnn-share/borzoi/f2/model1_best.h5)<br/>
 [Borzoi Replicate 3 (human)](https://storage.googleapis.com/seqnn-share/borzoi/f3/model0_best.h5) | [(mouse)](https://storage.googleapis.com/seqnn-share/borzoi/f3/model1_best.h5)<br/>
 
-For convenience, users can run *download_models.sh* to download model replicates and annotations into the 'examples/' folder.
+Users can run the script *download_models.sh* to download all model replicates and annotations into the 'examples/' folder.
 ```sh
 cd borzoi
 ./download_models.sh
