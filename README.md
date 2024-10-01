@@ -91,7 +91,7 @@ For example, here are the weights, targets, and parameter file of a model traine
 ### Data Availability
 The training data for Borzoi can be downloaded from the following URL:
 
-[Borzoi V2 Training Data](https://storage.googleapis.com/borzoi-paper/data/)<br/>
+[Borzoi Training Data](https://storage.googleapis.com/borzoi-paper/data/)<br/>
 
 *Note*: This data bucket is very large and thus set to "Requester Pays".
 
@@ -102,6 +102,24 @@ The curated e-/s-/pa-/ipaQTL benchmarking data can be downloaded from the follow
 [sQTL Data](https://storage.googleapis.com/borzoi-paper/qtl/sqtl/)<br/>
 [paQTL Data](https://storage.googleapis.com/borzoi-paper/qtl/paqtl/)<br/>
 [ipaQTL Data](https://storage.googleapis.com/borzoi-paper/qtl/ipaqtl/)<br/>
+
+### Paper Replication
+To replicate the results presented in the paper, visit the [borzoi-paper repository](https://github.com/calico/borzoi-paper.git). This repository contains scripts for **training**, **evaluating**, and **analyzing** the published model.
+
+### Tutorials
+Todo.
+
+#### Data Processing
+Todo.
+
+#### Model Training
+Todo.
+
+#### Variant Scoring
+Todo.
+
+#### Sequence Attribution
+Todo.
 
 ### Example Notebooks
 The following notebooks contain example code for predicting and interpreting genetic variants.
