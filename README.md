@@ -104,7 +104,7 @@ The curated e-/s-/pa-/ipaQTL benchmarking data can be downloaded from the follow
 [ipaQTL Data](https://storage.googleapis.com/borzoi-paper/qtl/ipaqtl/)<br/>
 
 ### Paper Replication
-To replicate the results presented in the paper, visit the [borzoi-paper repository](https://github.com/calico/borzoi-paper.git). This repository contains scripts for **training**, **evaluating**, and **analyzing** the published model.
+To replicate the results presented in the paper, visit the [borzoi-paper repository](https://github.com/calico/borzoi-paper.git). This repository contains scripts for **training**, **evaluating**, and **analyzing** the published model, and for processing the **training data**.
 
 ### Tutorials
 Todo.
