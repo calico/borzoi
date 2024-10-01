@@ -51,7 +51,7 @@ conda activate borzoi_py310
 ./env_vars.sh
 ```
 
-Alternatively, these environment variables can be set manually:
+Alternatively, the environment variables can be set manually:
 ```sh
 export BORZOI_DIR=/home/<user_path>/borzoi
 export PATH=$BORZOI_DIR/src/scripts:$PATH
