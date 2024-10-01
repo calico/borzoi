@@ -49,6 +49,10 @@ Finally, the code base relies on a number of environment variables. For convenie
 cd borzoi
 conda activate borzoi_py310
 ./env_vars.sh
+cd ../baskerville
+./env_vars.sh
+cd ../westminster
+./env_vars.sh
 ```
 
 Alternatively, the environment variables can be set manually:
@@ -57,10 +61,20 @@ export BORZOI_DIR=/home/<user_path>/borzoi
 export PATH=$BORZOI_DIR/src/scripts:$PATH
 export PYTHONPATH=$BORZOI_DIR/src/scripts:$PYTHONPATH
 
+export BASKERVILLE_DIR=/home/<user_path>/baskerville
+export PATH=$BASKERVILLE_DIR/src/baskerville/scripts:$PATH
+export PYTHONPATH=$BASKERVILLE_DIR/src/baskerville/scripts:$PYTHONPATH
+
+export WESTMINSTER_DIR=/home/<user_path>/westminster
+export PATH=$WESTMINSTER_DIR/src/westminster/scripts:$PATH
+export PYTHONPATH=$WESTMINSTER_DIR/src/westminster/scripts:$PYTHONPATH
+
 export BORZOI_CONDA=/home/<user>/anaconda3/etc/profile.d/conda.sh
 export BORZOI_HG38=$BORZOI_DIR/examples/hg38
 export BORZOI_MM10=$BORZOI_DIR/examples/mm10
 ```
+
+*Note*: The *baskerville* and *westminster* variables are only required for data processing and model training.
 
 ### Model Availability
 The model weights can be downloaded as .h5 files from the URLs below. We trained a total of 4 model replicates with identical train, validation and test splits (test = fold3, validation = fold4 from [sequences_human.bed.gz](https://github.com/calico/borzoi/blob/main/data/sequences_human.bed.gz)).
