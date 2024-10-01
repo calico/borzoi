@@ -9,7 +9,7 @@ Code repository for Borzoi models, which are convolutional neural networks train
 
 [https://www.biorxiv.org/content/10.1101/2023.08.30.555582v1](https://www.biorxiv.org/content/10.1101/2023.08.30.555582v1).
 
-Borzoi was trained on a large set of RNA-seq experiments from ENCODE and GTEx, as well as re-processed versions of the original Enformer training data (including ChIP-seq and DNase data from ENCODE, ATAC-seq data from CATlas, and CAGE data from FANTOM5). Click [here](https://raw.githubusercontent.com/calico/borzoi/main/examples/targets_human.txt) for a list of trained-on experiments.
+Borzoi was trained on a large set of RNA-seq experiments from ENCODE and GTEx, as well as re-processed versions of the original Enformer training data (including ChIP-seq and DNase data from ENCODE, ATAC-seq data from CATlas, and CAGE data from FANTOM5). Here is a list of trained-on experiments: [human](https://raw.githubusercontent.com/calico/borzoi/main/examples/targets_human.txt) / [mouse](https://raw.githubusercontent.com/calico/borzoi/main/examples/targets_mouse.txt).
 
 The repository contains example usage code (including jupyter notebooks for predicting and visualizing genetic variants) as well as links for downloading model weights, training data, QTL benchmark tasks, etc.
 
@@ -30,20 +30,51 @@ cd borzoi
 pip install -e .
 ```
 
-These repositories further depend on a number of python packages (which are automatically installed with borzoi). See **setup.cfg** for a complete list. The most important version dependencies are:
-- Python == 3.9
-- Tensorflow == 2.12.x (see [https://www.tensorflow.org/install/pip](https://www.tensorflow.org/install/pip))
+To train new models, the [westminster repository](https://github.com/calico/westminster.git) is also required and can be installed with these commands:
+```sh
+git clone https://github.com/calico/westminster.git
+cd westminster
+pip install -e .
+```
+
+These repositories further depend on a number of python packages (which are automatically installed with borzoi). See **pyproject.toml** for a complete list. The most important version dependencies are:
+- Python == 3.10
+- Tensorflow == 2.15.x (see [https://www.tensorflow.org/install/pip](https://www.tensorflow.org/install/pip))
 
 *Note*: The example notebooks require jupyter, which can be installed with `pip install notebook`.<br/>
-A new conda environment can be created with `conda create -n borzoi_py39 python=3.9`.
+A new conda environment can be created with `conda create -n borzoi_py310 python=3.10`.
+
+Finally, the code base relies on a number of environment variables. For convenience, these can be configured in the active conda environment with the 'env_vars.sh' script.
+```sh
+cd borzoi
+conda activate borzoi_py310
+./env_vars.sh
+```
+
+Alternatively, these environment variables can be set manually:
+```sh
+export BORZOI_DIR=/home/<user_path>/borzoi
+export PATH=$BORZOI_DIR/src/scripts:$PATH
+export PYTHONPATH=$BORZOI_DIR/src/scripts:$PYTHONPATH
+
+export BORZOI_CONDA=/home/<user>/anaconda3/etc/profile.d/conda.sh
+export BORZOI_HG38=$BORZOI_DIR/examples/hg38
+export BORZOI_MM10=$BORZOI_DIR/examples/mm10
+```
 
 ### Model Availability
 The model weights can be downloaded as .h5 files from the URLs below. We trained a total of 4 model replicates with identical train, validation and test splits (test = fold3, validation = fold4 from [sequences_human.bed.gz](https://github.com/calico/borzoi/blob/main/data/sequences_human.bed.gz)).
 
-[Borzoi V2 Replicate 0](https://storage.googleapis.com/seqnn-share/borzoi/f0/model0_best.h5)<br/>
-[Borzoi V2 Replicate 1](https://storage.googleapis.com/seqnn-share/borzoi/f1/model0_best.h5)<br/>
-[Borzoi V2 Replicate 2](https://storage.googleapis.com/seqnn-share/borzoi/f2/model0_best.h5)<br/>
-[Borzoi V2 Replicate 3](https://storage.googleapis.com/seqnn-share/borzoi/f3/model0_best.h5)<br/>
+[Borzoi Replicate 0 (human)](https://storage.googleapis.com/seqnn-share/borzoi/f0/model0_best.h5) | [(mouse)](https://storage.googleapis.com/seqnn-share/borzoi/f0/model1_best.h5)<br/>
+[Borzoi Replicate 1 (human)](https://storage.googleapis.com/seqnn-share/borzoi/f1/model0_best.h5) | [(mouse)](https://storage.googleapis.com/seqnn-share/borzoi/f1/model1_best.h5)<br/>
+[Borzoi Replicate 2 (human)](https://storage.googleapis.com/seqnn-share/borzoi/f2/model0_best.h5) | [(mouse)](https://storage.googleapis.com/seqnn-share/borzoi/f2/model1_best.h5)<br/>
+[Borzoi Replicate 3 (human)](https://storage.googleapis.com/seqnn-share/borzoi/f3/model0_best.h5) | [(mouse)](https://storage.googleapis.com/seqnn-share/borzoi/f3/model1_best.h5)<br/>
+
+For convenience, users can run *download_models.sh* to download model replicates and annotations into the 'examples/' folder.
+```sh
+cd borzoi
+./download_models.sh
+```
 
 #### Mini Borzoi Models
 We have trained a collection of (smaller) model instances on various subsets of data modalities (or on all data modalities but with architectural changes compared to the original architecture). For example, some models are trained only on RNA-seq data while others are trained on DNase-, ATAC- and RNA-seq. Similarly, some model instances are trained on human-only data while others are trained on human- and mouse data. The models were trained with either 2- or 4-fold cross-validation and are available at the following URL:
