@@ -42,7 +42,8 @@ These repositories further depend on a number of python packages (which are auto
 - Tensorflow == 2.15.x (see [https://www.tensorflow.org/install/pip](https://www.tensorflow.org/install/pip))
 
 *Note*: The example notebooks require jupyter, which can be installed with `pip install notebook`.<br/>
-A new conda environment can be created with `conda create -n borzoi_py310 python=3.10`.
+A new conda environment can be created with `conda create -n borzoi_py310 python=3.10`.<br/>
+Some of the scripts in this repository start multi-process jobs and require [slurm](https://slurm.schedmd.com/).
 
 Finally, the code base relies on a number of environment variables. For convenience, these can be configured in the active conda environment with the 'env_vars.sh' script.
 ```sh
