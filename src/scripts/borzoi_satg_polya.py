@@ -180,8 +180,13 @@ def main():
     # load first model fold to get parameters
 
     seqnn_model = seqnn.SeqNN(params_model)
+    
+    model_path = model_folder + "/f" + str(options.folds[0]) + "c0/train/model" + str(options.head_i) + "_best.h5"
+    if not os.path.isfile(model_path) :
+        model_path = model_folder + "/f" + str(options.folds[0]) + "c0/train/model_best.h5"
+    
     seqnn_model.restore(
-        model_folder + "/f" + str(options.folds[0]) + "c0/train/model" + str(options.head_i) + "_best.h5",
+        model_path,
         options.head_i
     )
     seqnn_model.build_slice(targets_df.index, False)
@@ -309,8 +314,13 @@ def main():
 
             # load model fold
             seqnn_model = seqnn.SeqNN(params_model)
+
+            model_path = model_folder + "/f" + str(fold_ix) + "c" + str(cross_ix) + "/train/model" + str(options.head_i) + "_best.h5"
+            if not os.path.isfile(model_path) :
+                model_path = model_folder + "/f" + str(fold_ix) + "c" + str(cross_ix) + "/train/model_best.h5"
+
             seqnn_model.restore(
-                model_folder + "/f" + str(fold_ix) + "c" + str(cross_ix) + "/train/model" + str(options.head_i) + "_best.h5",
+                model_path,
                 options.head_i
             )
             seqnn_model.build_slice(targets_df.index, False)

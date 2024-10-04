@@ -1,0 +1,3 @@
+	identifier	file	clip	clip_soft	scale	sum_stat	strand_pair	description
+0	ENCFF980ZHM+	human/rna/encode/ENCSR000AEL/summary/coverage+.w5	768	384	0.3	sum_sqrt	1	RNA:K562
+1	ENCFF980ZHM-	human/rna/encode/ENCSR000AEL/summary/coverage-.w5	768	384	0.3	sum_sqrt	0	RNA:K562

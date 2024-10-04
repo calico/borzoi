@@ -1,0 +1,74 @@
+{
+    "train": {
+        "batch_size": 4,
+        "shuffle_buffer": 256,
+        "optimizer": "adam",
+        "learning_rate": 0.0002,
+        "loss": "poisson_mn",
+        "total_weight": 0.2,
+        "weight_range": 8,
+        "weight_exp": 6,
+        "warmup_steps": 10000,
+        "global_clipnorm": 0.2,
+        "adam_beta1": 0.9,
+        "adam_beta2": 0.999,
+        "patience": 30,
+        "train_epochs_min": 130,
+        "train_epochs_max": 180
+    },
+    "model": {
+        "seq_length": 393216,
+        "augment_rc": true,
+        "augment_shift": 3,
+        "activation": "gelu",
+        "norm_type": "batch",
+        "bn_momentum": 0.9,
+        "kernel_initializer": "lecun_normal",
+        "l2_scale": 1.0e-6,
+        "trunk": [
+            {
+                "name": "conv_dna",
+                "filters": 128,
+                "kernel_size": 11,
+                "norm_type": null,
+                "activation": "linear",
+                "pool_size": 2
+            },
+            {
+                "name": "res_tower",
+                "filters_init": 160,
+                "filters_end": 320,
+                "divisible_by": 8,
+                "kernel_size": 5,
+                "num_convs": 1,
+                "pool_size": 2,
+                "repeat": 6
+            },
+            {
+                "name": "transformer_tower",
+                "key_size": 32,
+                "heads": 4,
+                "num_position_features": 32,
+                "dropout": 0.1,
+                "attention_dropout": 0.01,
+                "mha_l2_scale": 1.0e-8,
+                "l2_scale": 1.0e-8,
+                "kernel_initializer": "he_normal",
+                "repeat": 4
+            },
+            {
+                "name": "unet_conv",
+                "kernel_size": 3
+            },
+            {
+                "name": "unet_conv",
+                "kernel_size": 3
+            }
+        ],
+        "head_human": {
+            "name": "final",
+            "units": 2,
+            "activation": "softplus"
+        }
+    }
+}
