@@ -1,6 +1,6 @@
 {
     "train": {
-        "batch_size": 1,
+        "batch_size": 2,
         "shuffle_buffer": 256,
         "optimizer": "adam",
         "learning_rate": 0.00006,
