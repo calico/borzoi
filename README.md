@@ -45,7 +45,7 @@ These repositories further depend on a number of python packages (which are auto
 A new conda environment can be created with `conda create -n borzoi_py310 python=3.10`.<br/>
 Some of the scripts in this repository start multi-process jobs and require [slurm](https://slurm.schedmd.com/).
 
-Finally, the code base relies on a number of environment variables. For convenience, these can be configured in the active conda environment with the 'env_vars.sh' script.
+Finally, the code base relies on a number of environment variables. For convenience, these can be configured in the active conda environment with the 'env_vars.sh' script. First, open up 'env_vars.sh' in each repository folder and change the two lines of code at the top to your username and local path. Then, issue these commands:
 ```sh
 cd borzoi
 conda activate borzoi_py310
