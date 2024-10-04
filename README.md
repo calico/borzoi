@@ -122,19 +122,12 @@ The curated e-/s-/pa-/ipaQTL benchmarking data can be downloaded from the follow
 To replicate the results presented in the paper, visit the [borzoi-paper repository](https://github.com/calico/borzoi-paper.git). This repository contains scripts for **training**, **evaluating**, and **analyzing** the published model, and for processing the **training data**.
 
 ### Tutorials
-Todo.
+The following directories contain *minimal* tutorials regarding model training, variant scoring, and interpretation. The 'legacy' tutorials use data transformations that are similar to those used in the manuscript, while 'latest' use updated (and simpler) transformations. Note that these tutorials are only intended to showcase core functionality on sample data (such as processing an RNA-seq experiment, or training a simple model). For advanced analyses, we recommend studying the results presented in the manuscript (see [Paper Replication](https://github.com/calico/borzoi/tree/main?tab=readme-ov-file#paper-replication)).
 
-#### Data Processing
-Todo.
-
-#### Model Training
-Todo.
-
-#### Variant Scoring
-Todo.
-
-#### Sequence Attribution
-Todo.
+- **Data Processing** [latest](https://github.com/calico/borzoi/tree/main/tutorials/latest/make_data) | [legacy](https://github.com/calico/borzoi/tree/main/tutorials/legacy/make_data)<br/>
+- **Model Training** [latest](https://github.com/calico/borzoi/tree/main/tutorials/latest/train_model) | [legacy](https://github.com/calico/borzoi/tree/main/tutorials/legacy/train_model)<br/>
+- **Variant Scoring** [latest](https://github.com/calico/borzoi/tree/main/tutorials/latest/score_variants) | [legacy](https://github.com/calico/borzoi/tree/main/tutorials/legacy/score_variants)<br/>
+- **Sequence Interpretation** [latest](https://github.com/calico/borzoi/tree/main/tutorials/latest/interpret_sequence) | [legacy](https://github.com/calico/borzoi/tree/main/tutorials/legacy/interpret_sequence)<br/>
 
 ### Example Notebooks
 The following notebooks contain example code for predicting and interpreting genetic variants.
