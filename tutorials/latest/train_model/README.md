@@ -5,7 +5,7 @@ This tutorial describes how to train smaller Borzoi models on the example RNA-se
 To train a 'Mini Borzoi' ensemble (~40M parameters, 2 cross-validation folds), run the script 'train_mini.sh'. The model parameters are specified in 'params_mini.json'. This model can be trained with a batch size of 2 on a 24GB NVIDIA Titan RTX or RTX4090 GPU.
 ```sh
 conda activate borzoi_py310
-cd ~/borzoi/tutorials/legacy/train_model
+cd ~/borzoi/tutorials/latest/train_model
 ./train_mini.sh
 ```
 
