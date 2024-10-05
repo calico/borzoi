@@ -1,11 +1,11 @@
 ## Variant Scoring
 
-This tutorial describes how to predict variant effect scores for a small set of SNVs defined in a .vcf file. This example relies on the Mini Borzoi model trained on sample K562 RNA-seq data from the [train_model repository](https://github.com/calico/borzoi/tree/main/tutorials/latest/train_model), which clearly is a significantly weaker model than the pre-trained, published Borzoi model. For examples showcasing variant effect prediction at a larger scale with the pre-trained model (e.g. fine-mapped eQTL classification benchmarks), we refer the user to the [borzoi-paper respository](https://github.com/calico/borzoi-paper/tree/main). Additionally, we refer the user to the **legacy** version of [this tutorial](https://github.com/calico/borzoi/tree/main/tutorials/legacy/score_variants), which uses the pre-trained, published model.
+This tutorial describes how to predict variant effect scores for a small set of SNVs defined in a .vcf file. This example relies on the Mini Borzoi model trained on sample K562 RNA-seq data from the [train_model tutorial](https://github.com/calico/borzoi/tree/main/tutorials/latest/train_model), which clearly is a significantly weaker model than the pre-trained, published Borzoi model. For examples showcasing variant effect prediction at a larger scale with the pre-trained model (e.g. fine-mapped eQTL classification benchmarks), we refer the user to the [borzoi-paper respository](https://github.com/calico/borzoi-paper/tree/main). Additionally, we refer the user to the **legacy** version of [this tutorial](https://github.com/calico/borzoi/tree/main/tutorials/legacy/score_variants), which uses the pre-trained, published model.
 
 First, to calculate **gene-specific expression** scores, run the script 'score_expr_sed.sh'. Two different statistics are computed: (1) logSED (gene expression log fold change), and (2) logD2 (bin-level L2 norm across the coverage profile intersecting the exons of the gene).
 ```sh
 conda activate borzoi_py310
-cd ~/borzoi/tutorials/legacy/score_variants
+cd ~/borzoi/tutorials/latest/score_variants
 ./score_expr_sed.sh
 ```
 
