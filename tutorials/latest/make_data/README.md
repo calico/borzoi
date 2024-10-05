@@ -5,7 +5,7 @@ This tutorial decribes how to process a .bigwig sequencing experiment into compr
 First, activate the conda environment and run the script 'download_dependencies.sh' to download required auxiliary files.
 ```sh
 conda activate borzoi_py310
-cd ~/borzoi/tutorials/legacy/make_data
+cd ~/borzoi/tutorials/latest/make_data
 ./download_dependencies.sh
 ```
 
@@ -39,4 +39,4 @@ In this example, the Makefile creates 8 cross-validation folds of TFRecords with
 
 *Notes*:
 - See [here](https://github.com/calico/borzoi-paper/tree/main/data/training) for a description of the scripts called by the Makefile to create TFRecords.
-- In the latest version of Borzoi models, a modified hg38 fasta genome is used in the Makefile where the allele with highest overall allele frequency (from gnomAD) is substituted at each position.
+- In the latest version of Borzoi models, a modified hg38 fasta genome is used in the Makefile where the allele with highest overall frequency (from gnomAD) is substituted at each position.
