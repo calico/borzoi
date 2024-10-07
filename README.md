@@ -108,7 +108,10 @@ The training data for Borzoi can be downloaded from the following URL:
 
 [Borzoi Training Data](https://storage.googleapis.com/borzoi-paper/data/)<br/>
 
-*Note*: This data bucket is very large and thus set to "Requester Pays".
+*Note*: This data bucket is very large (multiple TB) and thus set to "Requester Pays". To access the bucket, you must have a billable user project set up on the Google Cloud Platform (GCP) which is specified with the "-u" flag when issuing gsutil commands. For example, to list the contents of "gs://borzoi-paper/data", issue the following command:
+```sh
+gsutil -u <user_project> ls gs://borzoi-paper/data
+```
 
 ### QTL Availability
 The curated e-/s-/pa-/ipaQTL benchmarking data can be downloaded from the following URLs:
