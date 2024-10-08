@@ -30,7 +30,7 @@ cd borzoi
 pip install -e .
 ```
 
-To train new models, the [westminster repository](https://github.com/calico/westminster.git) is also required and can be installed with these commands:
+To train new models, the [westminster repository](https://github.com/calico/westminster.git) is also required and can be installed with these commands (*this repo is not yet available, but will be made public soon*):
 ```sh
 git clone https://github.com/calico/westminster.git
 cd westminster
