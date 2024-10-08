@@ -21,6 +21,7 @@ import os
 import numpy as np
 
 import slurm
+import util
 
 """
 borzoi_bench_paqtl_folds.py
@@ -40,17 +41,20 @@ def main():
     sed_options.add_option(
         "-f",
         dest="genome_fasta",
-        default="%s/assembly/ucsc/hg38.fa" % os.environ["HG38"],
+        default="%s/assembly/ucsc/hg38.fa" % os.environ.get('BORZOI_HG38', 'hg38'),
         help="Genome FASTA for sequences [Default: %default]",
     )
     sed_options.add_option(
         "-g",
         dest="genes_gtf",
-        default="%s/genes/gencode41/gencode41_basic_nort.gtf" % os.environ["HG38"],
+        default="%s/genes/gencode41/gencode41_basic_nort.gtf" % os.environ.get('BORZOI_HG38', 'hg38'),
         help="GTF for gene definition [Default %default]",
     )
     sed_options.add_option(
-        "--apafile", dest="apa_file", default="polyadb_human_v3.csv.gz"
+        "--apafile",
+        dest="apa_file",
+        default="%s/genes/polyadb/polyadb_human_v3.csv.gz" % os.environ.get('BORZOI_HG38', 'hg38'),
+        help="Csv for polya site definition [Default %default]",
     )
     sed_options.add_option(
         "-o",
@@ -77,7 +81,7 @@ def main():
         dest="cov_min",
         default=100,
         type="float",
-        help="Coverage pseudocount [Default: %default]",
+        help="Coverage minimum for pA site [Default: %default]",
     )
     sed_options.add_option(
         "--rc",
@@ -106,6 +110,18 @@ def main():
         type="str",
         help="File specifying target indexes and labels in table format",
     )
+    sed_options.add_option(
+        '-u',
+        dest='untransform_old',
+        default=False,
+        action='store_true'
+    )
+    sed_options.add_option(
+        '--no_untransform',
+        dest='no_untransform',
+        default=False,
+        action='store_true'
+    )
     parser.add_option_group(sed_options)
 
     # classify
@@ -127,6 +143,19 @@ def main():
         default=1,
         type="int",
         help="Number of cross-fold rounds [Default:%default]",
+    )
+    fold_options.add_option(
+        "--folds",
+        dest="fold_subset",
+        default=1,
+        type="int",
+        help="Run a subset of folds [Default:%default]",
+    )
+    fold_options.add_option(
+        "--f_list",
+        dest="fold_subset_list",
+        default=None,
+        help="Run a subset of folds (encoded as comma-separated string) [Default:%default]",
     )
     fold_options.add_option(
         "-d",
@@ -187,21 +216,16 @@ def main():
     #######################################################
     # prep work
 
-    # count folds
-    num_folds = 0
-    fold0_dir = "%s/f%dc0" % (exp_dir, num_folds)
-    model_file = "%s/train/model_best.h5" % fold0_dir
-    if options.data_head is not None:
-        model_file = "%s/train/model%d_best.h5" % (fold0_dir, options.data_head)
-    while os.path.isfile(model_file):
-        num_folds += 1
-        fold0_dir = "%s/f%dc0" % (exp_dir, num_folds)
-        model_file = "%s/train/model_best.h5" % fold0_dir
-        if options.data_head is not None:
-            model_file = "%s/train/model%d_best.h5" % (fold0_dir, options.data_head)
-    print("Found %d folds" % num_folds)
-    if num_folds == 0:
-        exit(1)
+    # set folds
+    num_folds = 1
+    if options.fold_subset is not None:
+        num_folds = options.fold_subset
+  
+    fold_index = [fold_i for fold_i in range(num_folds)]
+
+    # subset folds (list)
+    if options.fold_subset_list is not None:
+        fold_index = [int(fold_str) for fold_str in options.fold_subset_list.split(",")]
 
     sed_stats = options.sed_stats.split(",")
 
@@ -213,14 +237,14 @@ def main():
     # SNP scores
 
     # command base
-    cmd_base = ". /home/drk/anaconda3/etc/profile.d/conda.sh;"
-    cmd_base += " conda activate %s;" % options.conda_env
+    cmd_base = ('. %s; ' % os.environ['BORZOI_CONDA']) if 'BORZOI_CONDA' in os.environ else ''
+    cmd_base += "conda activate %s;" % options.conda_env
     cmd_base += " echo $HOSTNAME;"
 
     jobs = []
 
     for ci in range(options.crosses):
-        for fi in range(num_folds):
+        for fi in fold_index:
             it_dir = "%s/f%dc%d" % (exp_dir, fi, ci)
             name = "%s-f%dc%d" % (options.name, fi, ci)
 
@@ -280,7 +304,7 @@ def main():
     # split study/tissue variants
 
     for ci in range(options.crosses):
-        for fi in range(num_folds):
+        for fi in fold_index:
             it_dir = "%s/f%dc%d" % (exp_dir, fi, ci)
             it_out_dir = "%s/%s" % (it_dir, options.out_dir)
 
@@ -310,7 +334,7 @@ def main():
         sed_pos_files = []
         sed_neg_files = []
         for ci in range(options.crosses):
-            for fi in range(num_folds):
+            for fi in fold_index:
                 it_dir = "%s/f%dc%d" % (exp_dir, fi, ci)
                 it_out_dir = "%s/%s" % (it_dir, options.out_dir)
 
@@ -334,66 +358,88 @@ def main():
             ensemble_sed_h5(ens_neg_file, sed_neg_files, sed_stats)
 
     ################################################################
-    # fit classifiers
+    # (optionally) fit classifiers
 
-    cmd_base = "westminster_classify.py -i 100 -p 2 -r 44 -s --stat COVR"
-    cmd_base += " --msl %d" % options.msl
+    fit_classifiers = False # this analysis was ultimately not used in the manuscript
+    run_local = True
 
-    jobs = []
-    for ci in range(options.crosses):
-        for fi in range(num_folds):
-            it_dir = "%s/f%dc%d" % (exp_dir, fi, ci)
-            it_out_dir = "%s/%s" % (it_dir, options.out_dir)
+    if fit_classifiers:
+        if run_local:
+            cmd_base = ""
+        else:
+            cmd_base = ". /home/drk/anaconda3/etc/profile.d/conda.sh;"
+            cmd_base += " conda activate %s;" % options.conda_env
+            cmd_base += " echo $HOSTNAME;"
 
-            for sqtl_pos_vcf in glob.glob("%s/*_pos.vcf" % options.vcf_dir):
-                tissue = os.path.splitext(os.path.split(sqtl_pos_vcf)[1])[0][:-4]
-                sed_pos = "%s/%s_pos/sed.h5" % (it_out_dir, tissue)
-                sed_neg = "%s/%s_neg/sed.h5" % (it_out_dir, tissue)
-                class_out_dir = "%s/%s_class" % (it_out_dir, tissue)
+        cmd_base += " borzoi_bench_classify.py -i 100 -p 2 -r 44 -s --stat COVR"
+        cmd_base += " --msl %d" % options.msl
 
-                if not options.restart or not os.path.isfile(
-                    "%s/stats.txt" % class_out_dir
-                ):
-                    cmd_class = "%s -o %s %s %s" % (
-                        cmd_base,
-                        class_out_dir,
-                        sed_pos,
-                        sed_neg,
-                    )
-                    j = slurm.Job(
-                        cmd_class,
-                        tissue,
-                        "%s.out" % class_out_dir,
-                        "%s.err" % class_out_dir,
-                        queue="standard",
-                        cpu=2,
-                        mem=22000,
-                        time="1-0:0:0",
-                    )
+        jobs = []
+        for ci in range(options.crosses):
+            for fi in fold_index:
+                it_dir = "%s/f%dc%d" % (exp_dir, fi, ci)
+                it_out_dir = "%s/%s" % (it_dir, options.out_dir)
+
+                for sqtl_pos_vcf in glob.glob("%s/*_pos.vcf" % options.vcf_dir):
+                    tissue = os.path.splitext(os.path.split(sqtl_pos_vcf)[1])[0][:-4]
+                    sed_pos = "%s/%s_pos/sed.h5" % (it_out_dir, tissue)
+                    sed_neg = "%s/%s_neg/sed.h5" % (it_out_dir, tissue)
+                    class_out_dir = "%s/%s_class" % (it_out_dir, tissue)
+
+                    if not options.restart or not os.path.isfile(
+                        "%s/stats.txt" % class_out_dir
+                    ):
+                        cmd_class = "%s -o %s %s %s" % (
+                            cmd_base,
+                            class_out_dir,
+                            sed_pos,
+                            sed_neg,
+                        )
+                        j = slurm.Job(
+                            cmd_class,
+                            tissue,
+                            "%s.out" % class_out_dir,
+                            "%s.err" % class_out_dir,
+                            "%s.sb" % class_out_dir,
+                            queue="standard",
+                            cpu=2,
+                            mem=22000,
+                            time="1-0:0:0",
+                        )
+                        if run_local:
+                            jobs.append(cmd_class)
+                        else:
+                            jobs.append(j)
+
+        # ensemble
+        for sqtl_pos_vcf in glob.glob("%s/*_pos.vcf" % options.vcf_dir):
+            tissue = os.path.splitext(os.path.split(sqtl_pos_vcf)[1])[0][:-4]
+            sed_pos = "%s/%s_pos/sed.h5" % (sqtl_dir, tissue)
+            sed_neg = "%s/%s_neg/sed.h5" % (sqtl_dir, tissue)
+            class_out_dir = "%s/%s_class" % (sqtl_dir, tissue)
+
+            if not options.restart or not os.path.isfile("%s/stats.txt" % class_out_dir):
+                cmd_class = "%s -o %s %s %s" % (cmd_base, class_out_dir, sed_pos, sed_neg)
+                j = slurm.Job(
+                    cmd_class,
+                    tissue,
+                    "%s.out" % class_out_dir,
+                    "%s.err" % class_out_dir,
+                    "%s.sb" % class_out_dir,
+                    queue="standard",
+                    cpu=2,
+                    mem=22000,
+                    time="1-0:0:0",
+                )
+                if run_local:
+                    jobs.append(cmd_class)
+                else:
                     jobs.append(j)
 
-    # ensemble
-    for sqtl_pos_vcf in glob.glob("%s/*_pos.vcf" % options.vcf_dir):
-        tissue = os.path.splitext(os.path.split(sqtl_pos_vcf)[1])[0][:-4]
-        sed_pos = "%s/%s_pos/sed.h5" % (sqtl_dir, tissue)
-        sed_neg = "%s/%s_neg/sed.h5" % (sqtl_dir, tissue)
-        class_out_dir = "%s/%s_class" % (sqtl_dir, tissue)
-
-        if not options.restart or not os.path.isfile("%s/stats.txt" % class_out_dir):
-            cmd_class = "%s -o %s %s %s" % (cmd_base, class_out_dir, sed_pos, sed_neg)
-            j = slurm.Job(
-                cmd_class,
-                tissue,
-                "%s.out" % class_out_dir,
-                "%s.err" % class_out_dir,
-                queue="standard",
-                cpu=2,
-                mem=22000,
-                time="1-0:0:0",
-            )
-            jobs.append(j)
-
-    slurm.multi_run(jobs, verbose=True)
+        if run_local:
+            util.exec_par(jobs, 6, verbose=True)
+        else:
+            slurm.multi_run(jobs, verbose=True)
 
 
 def complete_h5(h5_file, sed_stats):

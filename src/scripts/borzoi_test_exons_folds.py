@@ -95,10 +95,16 @@ def main():
         help="Run a subset of folds [Default:%default]",
     )
     parser.add_option(
+        "--f_list",
+        dest="fold_subset_list",
+        default=None,
+        help="Run a subset of folds (encoded as comma-separated string) [Default:%default]",
+    )
+    parser.add_option(
         "-g",
         dest="exons_gff",
         default="%s/genes/gencode41/gencode41_basic_nort_protein_exons.gff"
-        % os.environ["HG38"],
+        % os.environ.get('BORZOI_HG38', 'hg38'),
     )
     parser.add_option(
         "--label_exp",
@@ -131,9 +137,16 @@ def main():
         help="Output experiment directory [Default: %default]",
     )
     parser.add_option(
-        "-p", dest="out_stem", default=None, help="Output plot stem [Default: %default]"
+        "-p",
+        dest="out_stem",
+        default=None,
+        help="Output plot stem [Default: %default]"
     )
-    parser.add_option("-q", dest="queue", default="geforce")
+    parser.add_option(
+        "-q",
+        dest="queue",
+        default="geforce"
+    )
     parser.add_option(
         "-r",
         dest="ref_dir",
@@ -155,18 +168,18 @@ def main():
         help="Ensemble prediction shifts [Default: %default]",
     )
     parser.add_option(
-        "--status",
-        dest="status",
-        default=False,
-        action="store_true",
-        help="Update metric status; do not run jobs [Default: %default]",
-    )
-    parser.add_option(
         "-t",
         dest="targets_file",
         default=None,
         type="str",
         help="File specifying target indexes and labels in table format",
+    )
+    parser.add_option(
+        '-u',
+        dest='untransform_old',
+        default=False,
+        action='store_true',
+        help='Untransform old models [Default: %default]',
     )
     (options, args) = parser.parse_args()
 
@@ -195,6 +208,12 @@ def main():
     # subset folds
     if options.fold_subset is not None:
         num_folds = min(options.fold_subset, num_folds)
+  
+    fold_index = [fold_i for fold_i in range(num_folds)]
+
+    # subset folds (list)
+    if options.fold_subset_list is not None:
+        fold_index = [int(fold_str) for fold_str in options.fold_subset_list.split(",")]
 
     if options.queue == "standard":
         num_cpu = 4
@@ -209,7 +228,7 @@ def main():
     jobs = []
 
     for ci in range(options.crosses):
-        for fi in range(num_folds):
+        for fi in fold_index:
             it_dir = "%s/f%dc%d" % (options.exp_dir, fi, ci)
 
             if options.dataset_i is None:
@@ -226,8 +245,8 @@ def main():
                 pass
             else:
                 # evaluate
-                cmd = ". /home/drk/anaconda3/etc/profile.d/conda.sh;"
-                cmd += " conda activate %s;" % options.conda_env
+                cmd = ('. %s; ' % os.environ['BORZOI_CONDA']) if 'BORZOI_CONDA' in os.environ else ''
+                cmd += "conda activate %s;" % options.conda_env
                 cmd += " time borzoi_test_exons.py"
                 cmd += " --head %d" % head_i
                 cmd += " -o %s" % out_dir
@@ -237,6 +256,11 @@ def main():
                     cmd += " --shifts %s" % options.shifts
                 if options.targets_file is not None:
                     cmd += " -t %s" % options.targets_file
+                if options.exons_bed is not None:
+                    cmd += " -b %s" % options.exons_bed
+                if options.untransform_old:
+                    cmd += " -u"
+                cmd += " -e %d" % options.exon_end
                 cmd += " %s" % params_file
                 cmd += " %s" % model_file
                 cmd += " %s/data%d" % (it_dir, head_i)

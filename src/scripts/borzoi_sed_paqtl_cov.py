@@ -27,6 +27,7 @@ import pybedtools
 import pysam
 
 from baskerville import gene as bgene
+from baskerville import dataset
 from baskerville import seqnn
 from baskerville import stream
 from baskerville import vcf as bvcf
@@ -38,11 +39,6 @@ Compute SNP COVerage Ratio (COVR) scores for SNPs in a VCF file,
 relative to 3' UTR polyadenylation sites in an annotation file.
 """
 
-
-def eprint(*args, **kwargs):
-    print(*args, file=sys.stderr, **kwargs)
-
-
 ################################################################################
 # main
 ################################################################################
@@ -52,16 +48,21 @@ def main():
     parser.add_option(
         "-f",
         dest="genome_fasta",
-        default="%s/assembly/ucsc/hg38.fa" % os.environ["HG38"],
+        default="%s/assembly/ucsc/hg38.fa" % os.environ.get('BORZOI_HG38', 'hg38'),
         help="Genome FASTA for sequences [Default: %default]",
     )
     parser.add_option(
         "-g",
         dest="genes_gtf",
-        default="%s/genes/gencode41/gencode41_basic_nort.gtf" % os.environ["HG38"],
+        default="%s/genes/gencode41/gencode41_basic_nort.gtf" % os.environ.get('BORZOI_HG38', 'hg38'),
         help="GTF for gene definition [Default %default]",
     )
-    parser.add_option("--apafile", dest="apa_file", default="polyadb_human_v3.csv.gz")
+    parser.add_option(
+        "--apafile",
+        dest="apa_file",
+        default="%s/genes/polyadb/polyadb_human_v3.csv.gz" % os.environ.get('BORZOI_HG38', 'hg38'),
+        help="Csv for polya site definition [Default %default]",
+    )
     parser.add_option(
         "-o",
         dest="out_dir",
@@ -122,6 +123,18 @@ def main():
         default=None,
         type="str",
         help="File specifying target indexes and labels in table format",
+    )
+    parser.add_option(
+        "-u",
+        dest="untransform_old",
+        default=False,
+        action="store_true",
+    )
+    parser.add_option(
+        "--no_untransform",
+        dest="no_untransform",
+        default=False,
+        action="store_true",
     )
     (options, args) = parser.parse_args()
 
@@ -190,7 +203,14 @@ def main():
         targets_df = pd.read_csv(options.targets_file, sep="\t", index_col=0)
 
     # prep strand
-    targets_strand_df = targets_prep_strand(targets_df)
+    targets_strand_df = dataset.targets_prep_strand(targets_df)
+
+    # set strand pairs (using new indexing)
+    orig_new_index = dict(zip(targets_df.index, np.arange(targets_df.shape[0])))
+    targets_strand_pair = np.array(
+        [orig_new_index[ti] for ti in targets_df.strand_pair]
+    )
+    params_model["strand_pair"] = [targets_strand_pair]
 
     #################################################################
     # setup model
@@ -360,13 +380,15 @@ def main():
         alt_preds = preds_stream[pi]
         pi += 1
 
-        # undo scale
-        ref_preds /= np.expand_dims(targets_df.scale, axis=0)
-        alt_preds /= np.expand_dims(targets_df.scale, axis=0)
-
-        # undo sqrt
-        ref_preds = ref_preds ** (4 / 3)
-        alt_preds = alt_preds ** (4 / 3)
+        # untransform predictions
+        if options.targets_file is not None:
+            if not options.no_untransform:
+                if options.untransform_old:
+                    ref_preds = dataset.untransform_preds1(ref_preds, targets_df, unscale=True, unclip=False)
+                    alt_preds = dataset.untransform_preds1(alt_preds, targets_df, unscale=True, unclip=False)
+                else:
+                    ref_preds = dataset.untransform_preds(ref_preds, targets_df, unscale=True, unclip=False)
+                    alt_preds = dataset.untransform_preds(alt_preds, targets_df, unscale=True, unclip=False)
 
         # for each overlapping gene
         for gene_id, gene_slice_dup in snpseq_gene_slice[si]["bins"].items():
@@ -425,8 +447,7 @@ def main():
         # for each overlapping PAS
         for pas_id, pas_slice in snpseq_apa_slice[si]["bins"].items():
             if len(pas_slice) > len(set(pas_slice)):
-                print("WARNING: %d %s has overlapping bins" % (si, pas_id))
-                eprint("WARNING: %d %s has overlapping bins" % (si, pas_id))
+                print("WARNING: %d %s has overlapping bins" % (si, pas_id), flush=True)
 
             # slice pas positions
             ref_preds_pas = ref_preds[pas_slice]
@@ -786,23 +807,6 @@ def make_snpseq_bedt(snps, seq_len):
 
     snpseq_bedt = pybedtools.BedTool("\n".join(snpseq_bed_lines), from_string=True)
     return snpseq_bedt
-
-
-def targets_prep_strand(targets_df):
-    # attach strand
-    targets_strand = []
-    for _, target in targets_df.iterrows():
-        if target.strand_pair == target.name:
-            targets_strand.append(".")
-        else:
-            targets_strand.append(target.identifier[-1])
-    targets_df["strand"] = targets_strand
-
-    # collapse stranded
-    strand_mask = targets_df.strand != "-"
-    targets_strand_df = targets_df[strand_mask]
-
-    return targets_strand_df
 
 
 def write_pct(sed_out, sed_stats):

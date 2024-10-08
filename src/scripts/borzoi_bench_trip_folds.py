@@ -36,7 +36,7 @@ def main():
     trip_options.add_option(
         "-f",
         dest="genome_fasta",
-        default="%s/assembly/ucsc/hg38.fa" % os.environ["HG38"],
+        default="%s/assembly/ucsc/hg38.fa" % os.environ.get('BORZOI_HG38', 'hg38'),
         help="Genome FASTA for sequences [Default: %default]",
     )
     trip_options.add_option(
@@ -99,6 +99,19 @@ def main():
         help="Number of cross-fold rounds [Default:%default]",
     )
     fold_options.add_option(
+        "--folds",
+        dest="fold_subset",
+        default=1,
+        type="int",
+        help="Run a subset of folds [Default:%default]",
+    )
+    fold_options.add_option(
+        "--f_list",
+        dest="fold_subset_list",
+        default=None,
+        help="Run a subset of folds (encoded as comma-separated string) [Default:%default]",
+    )
+    fold_options.add_option(
         "-d",
         dest="data_head",
         default=None,
@@ -156,34 +169,29 @@ def main():
     #######################################################
     # prep work
 
-    # count folds
-    num_folds = 0
-    fold0_dir = "%s/f%dc0" % (exp_dir, num_folds)
-    model_file = "%s/train/model_best.h5" % fold0_dir
-    if options.data_head is not None:
-        model_file = "%s/train/model%d_best.h5" % (fold0_dir, options.data_head)
-    while os.path.isfile(model_file):
-        num_folds += 1
-        fold0_dir = "%s/f%dc0" % (exp_dir, num_folds)
-        model_file = "%s/train/model_best.h5" % fold0_dir
-        if options.data_head is not None:
-            model_file = "%s/train/model%d_best.h5" % (fold0_dir, options.data_head)
-    print("Found %d folds" % num_folds)
-    if num_folds == 0:
-        exit(1)
+    # set folds
+    num_folds = 1
+    if options.fold_subset is not None:
+        num_folds = options.fold_subset
+  
+    fold_index = [fold_i for fold_i in range(num_folds)]
+
+    # subset folds (list)
+    if options.fold_subset_list is not None:
+        fold_index = [int(fold_str) for fold_str in options.fold_subset_list.split(",")]
 
     ################################################################
     # TRIP prediction jobs
 
     # command base
-    cmd_base = ". /home/drk/anaconda3/etc/profile.d/conda.sh;"
-    cmd_base += " conda activate %s;" % options.conda_env
+    cmd_base = ('. %s; ' % os.environ['BORZOI_CONDA']) if 'BORZOI_CONDA' in os.environ else ''
+    cmd_base += "conda activate %s;" % options.conda_env
     cmd_base += " echo $HOSTNAME;"
 
     jobs = []
 
     for ci in range(options.crosses):
-        for fi in range(num_folds):
+        for fi in fold_index:
             it_dir = "%s/f%dc%d" % (exp_dir, fi, ci)
             name = "%s-f%dc%d" % (options.name, fi, ci)
 

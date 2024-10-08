@@ -117,6 +117,13 @@ def main():
         action="store_true",
         help="Untransform old models [Default: %default]",
     )
+    parser.add_option(
+        "--store_span",
+        dest="store_span",
+        default=False,
+        action="store_true",
+        help="Store predicted/measured gene span coverage profiles [Default: %default]",
+    )
     (options, args) = parser.parse_args()
 
     if len(args) != 4:
@@ -323,16 +330,21 @@ def main():
                 preds_log = np.log2(gene_preds_gi[:, ti] + 1)
                 targets_log = np.log2(gene_targets_gi[:, ti] + 1)
                 gene_corr_gi[ti] = pearsonr(preds_log, targets_log)[0]
-                # gene_corr_gi[ti] = pearsonr(gene_preds_gi[:,ti], gene_targets_gi[:,ti])[0]
             else:
                 gene_corr_gi[ti] = np.nan
         gene_within.append(gene_corr_gi)
         gene_wvar.append(gene_targets_gi.var(axis=0))
 
-        # TEMP: save gene preds/targets
-        # os.makedirs('%s/gene_within' % options.out_dir, exist_ok=True)
-        # np.save('%s/gene_within/%s_preds.npy' % (options.out_dir, gene_id), gene_preds_gi.astype('float16'))
-        # np.save('%s/gene_within/%s_targets.npy' % (options.out_dir, gene_id), gene_targets_gi.astype('float16'))
+        # optionally store raw coverage profiles for gene span
+        if options.store_span:
+            hash_code = str(gene_id.split(".")[0][-1]) # last digit of gene id
+
+            os.makedirs('%s/gene_within' % options.out_dir, exist_ok=True)
+            os.makedirs('%s/gene_within/%s' % (options.out_dir, hash_code), exist_ok=True)
+            os.makedirs('%s/gene_within/%s/preds' % (options.out_dir, hash_code), exist_ok=True)
+            os.makedirs('%s/gene_within/%s/targets' % (options.out_dir, hash_code), exist_ok=True)
+            np.save('%s/gene_within/%s/preds/%s_preds.npy' % (options.out_dir, hash_code, gene_id), gene_preds_gi.astype('float16'))
+            np.save('%s/gene_within/%s/targets/%s_targets.npy' % (options.out_dir, hash_code, gene_id), gene_targets_gi.astype('float16'))
 
         # mean coverage
         gene_preds_gi = gene_preds_gi.mean(axis=0) / float(pool_width)
@@ -413,7 +425,7 @@ def main():
         )
         acc_nr2.append(nr2_ti)
         var_mask = gene_wvar[:, ti] > wvar_t[ti]
-        wr_ti = gene_within[var_mask].mean()
+        wr_ti = gene_within[:, ti][var_mask].mean()
         acc_wpearsonr.append(wr_ti)
 
     acc_df = pd.DataFrame(

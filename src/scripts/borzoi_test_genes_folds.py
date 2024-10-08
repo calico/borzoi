@@ -28,9 +28,9 @@ import seaborn as sns
 import slurm
 
 """
-borzoi_test_folds.py
+borzoi_test_genes_folds.py
 
-Train Borzoi model replicates using given parameters and data.
+Measure accuracy at gene-level for multiple model replicates.
 """
 
 ################################################################################
@@ -89,6 +89,13 @@ def main():
         action="store_true",
         help="Untransform old models [Default: %default]",
     )
+    parser.add_option(
+        "--store_span",
+        dest="store_span",
+        default=False,
+        action="store_true",
+        help="Store predicted/measured gene span coverage profiles [Default: %default]",
+    )
 
     # folds
     parser.add_option(
@@ -129,12 +136,19 @@ def main():
         "-f",
         dest="fold_subset",
         default=None,
+        type="int",
+        help="Run a subset of folds [Default:%default]",
+    )
+    parser.add_option(
+        "--f_list",
+        dest="fold_subset_list",
+        default=None,
         help="Run a subset of folds (encoded as comma-separated string) [Default:%default]",
     )
     parser.add_option(
         "-g",
         dest="genes_gtf",
-        default="%s/genes/gencode41/gencode41_basic_protein.gtf" % os.environ["HG38"],
+        default="%s/genes/gencode41/gencode41_basic_protein.gtf" % os.environ.get('BORZOI_HG38', 'hg38'),
     )
     parser.add_option(
         "--label_exp",
@@ -167,9 +181,16 @@ def main():
         help="Output experiment directory [Default: %default]",
     )
     parser.add_option(
-        "-p", dest="out_stem", default=None, help="Output plot stem [Default: %default]"
+        "-p",
+        dest="out_stem",
+        default=None,
+        help="Output plot stem [Default: %default]"
     )
-    parser.add_option("-q", dest="queue", default="geforce")
+    parser.add_option(
+        "-q",
+        dest="queue",
+        default="geforce"
+    )
     parser.add_option(
         "-s",
         dest="sub_dir",
@@ -181,13 +202,6 @@ def main():
         dest="ref_dir",
         default=None,
         help="Reference directory for statistical tests",
-    )
-    parser.add_option(
-        "--status",
-        dest="status",
-        default=False,
-        action="store_true",
-        help="Update metric status; do not run jobs [Default: %default]",
     )
 
     (options, args) = parser.parse_args()
@@ -213,12 +227,16 @@ def main():
 
     # count folds
     num_folds = len([dkey for dkey in data_stats if dkey.startswith("fold")])
-  
-    fold_index = [fold_i for fold_i in range(num_folds)]
 
     # subset folds
     if options.fold_subset is not None:
-        fold_index = [int(fold_str) for fold_str in options.fold_subset.split(",")]
+        num_folds = min(options.fold_subset, num_folds)
+  
+    fold_index = [fold_i for fold_i in range(num_folds)]
+
+    # subset folds (list)
+    if options.fold_subset_list is not None:
+        fold_index = [int(fold_str) for fold_str in options.fold_subset_list.split(",")]
 
     if options.queue == "standard":
         num_cpu = 8
@@ -250,10 +268,10 @@ def main():
                 pass
             else:
                 # evaluate
-                cmd = ". /home/drk/anaconda3/etc/profile.d/conda.sh;"
-                cmd += " conda activate %s;" % options.conda_env
+                cmd = ('. %s; ' % os.environ['BORZOI_CONDA']) if 'BORZOI_CONDA' in os.environ else ''
+                cmd += "conda activate %s;" % options.conda_env
                 cmd += " time borzoi_test_genes.py"
-                # cmd += ' --head %d' % head_i
+                cmd += ' --head %d' % head_i
                 cmd += " -o %s" % out_dir
                 if options.rc:
                     cmd += " --rc"
@@ -265,6 +283,8 @@ def main():
                     cmd += ' --pseudo_qtl %.2f' % options.pseudo_qtl
                 if options.untransform_old:
                     cmd += ' -u'
+                if options.store_span:
+                    cmd += ' --store_span'
                 if options.span:
                     cmd += " --span"
                     job_mem = 240000
