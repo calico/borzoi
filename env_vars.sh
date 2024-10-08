@@ -2,7 +2,7 @@
 
 # set these variables before running the script
 LOCAL_BORZOI_PATH="/home/jlinder/borzoi"
-LOCAL_USER="jlinder"
+LOCAL_CONDA_PATH="/home/jlinder/anaconda3/etc/profile.d/conda.sh"
 
 # create env_vars sh scripts in local conda env
 mkdir -p "$CONDA_PREFIX/etc/conda/activate.d"
@@ -26,7 +26,7 @@ echo 'export PYTHONPATH=$BORZOI_DIR/src/scripts:$PYTHONPATH' >> $file_vars_act
 echo 'export BORZOI_HG38=$BORZOI_DIR/examples/hg38' >> $file_vars_act
 echo 'export BORZOI_MM10=$BORZOI_DIR/examples/mm10' >> $file_vars_act
 
-echo "export BORZOI_CONDA=/home/$LOCAL_USER/anaconda3/etc/profile.d/conda.sh" >> $file_vars_act
+echo "export BORZOI_CONDA=$LOCAL_CONDA_PATH" >> $file_vars_act
 
 # append env variable unsets to /deactivate.d/env_vars.sh
 echo 'unset BORZOI_DIR' >> $file_vars_deact
