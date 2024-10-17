@@ -24,7 +24,7 @@ Finally, run the Makefile to create genome-wide binned coverage tracks, stored a
 make
 ```
 
-In this example, the Makefile creates 8 cross-validation folds of TFRecords with input sequences of length 393216 bp, generated with a genome-wide stride of 43691 bp. The output coverage tracks corresponding to each input sequence are not cropped in the latest version of Borzoi models. This results in 12288 coverage bins per 393kb sequence. The specific .w5 tracks to include in the TFRecord generation, and the scales and pooling transforms applied to the bins of each experiment, are given in the targets file 'targets_human.txt'. Below is a description of the columns in this file.
+In this example, the Makefile creates 8 cross-validation folds of TFRecords with input sequences of length 393216 bp, generated with a genome-wide stride of 131087 bp (which is ~1/3 of the sequence length, but shifts the bin boundaries, too). The output coverage tracks corresponding to each input sequence are not cropped in the latest version of Borzoi models. This results in 12288 coverage bins per 393kb sequence. The specific .w5 tracks to include in the TFRecord generation, and the scales and pooling transforms applied to the bins of each experiment, are given in the targets file 'targets_human.txt'. Below is a description of the columns in this file.
 
 *targets_human.txt*:
 - (unnamed) => integer index of each track (must start from 0 when training a new model).
