@@ -30,7 +30,7 @@ cd borzoi
 pip install -e .
 ```
 
-To train new models, the [westminster repository](https://github.com/calico/westminster.git) is also required and can be installed with these commands (*this repo is not yet available, but will be made public soon*):
+To train new models, the [westminster repository](https://github.com/calico/westminster.git) is also required and can be installed with these commands:
 ```sh
 git clone https://github.com/calico/westminster.git
 cd westminster
@@ -103,6 +103,11 @@ For example, here are the weights, targets, and parameter file of a model traine
 [Borzoi K562 RNA-seq Fold 1](https://storage.googleapis.com/seqnn-share/borzoi/mini/k562_rna/f1/model0_best.h5)<br/>
 [Borzoi K562 RNA-seq Targets](https://storage.googleapis.com/seqnn-share/borzoi/mini/k562_rna/hg38/targets.txt)<br/>
 [Borzoi K562 RNA-seq Parameters](https://storage.googleapis.com/seqnn-share/borzoi/mini/k562_rna/params.json)<br/>
+
+*Note*: To list the contents of the mini model repository, use gsutil:
+```
+gsutil ls gs://seqnn-share/borzoi/mini
+```
 
 ### Data Availability
 The training data for Borzoi can be downloaded from the following URL:
