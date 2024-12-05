@@ -122,10 +122,10 @@ gsutil -u <user_project> ls gs://borzoi-paper/data
 ### QTL Availability
 The curated e-/s-/pa-/ipaQTL benchmarking data can be downloaded from the following URLs:
 
-[eQTL Data](https://storage.googleapis.com/borzoi-paper/qtl/eqtl/)<br/>
-[sQTL Data](https://storage.googleapis.com/borzoi-paper/qtl/sqtl/)<br/>
-[paQTL Data](https://storage.googleapis.com/borzoi-paper/qtl/paqtl/)<br/>
-[ipaQTL Data](https://storage.googleapis.com/borzoi-paper/qtl/ipaqtl/)<br/>
+[eQTL Data](https://console.cloud.google.com/storage/browser/borzoi-paper/qtl/eqtl/)<br/>
+[sQTL Data](https://console.cloud.google.com/storage/browser/borzoi-paper/qtl/sqtl/)<br/>
+[paQTL Data](https://console.cloud.google.com/storage/browser/borzoi-paper/qtl/paqtl/)<br/>
+[ipaQTL Data](https://console.cloud.google.com/storage/browser/borzoi-paper/qtl/ipaqtl/)<br/>
 
 ### Paper Replication
 To replicate the results presented in the paper, visit the [borzoi-paper repository](https://github.com/calico/borzoi-paper.git). This repository contains scripts for **training**, **evaluating**, and **analyzing** the published model, and for processing the **training data**.
