@@ -17,7 +17,7 @@ from tqdm import tqdm
 from matplotlib import pyplot as plt
 import seaborn as sns
 
-from baskerville import dna_io
+from baskerville import dna as dna_io
 import pygene
 import modisco
 
