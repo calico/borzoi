@@ -138,6 +138,11 @@ The following directories contain *minimal* tutorials regarding model training, 
 - **Variant Scoring** [latest](https://github.com/calico/borzoi/tree/main/tutorials/latest/score_variants) | [legacy](https://github.com/calico/borzoi/tree/main/tutorials/legacy/score_variants)<br/>
 - **Sequence Interpretation** [latest](https://github.com/calico/borzoi/tree/main/tutorials/latest/interpret_sequence) | [legacy](https://github.com/calico/borzoi/tree/main/tutorials/legacy/interpret_sequence)<br/>
 
+### Tutorials: indels and SVs
+The following directories contain *minimal* tutorials for indel, structural variant and tandem repeat analysis. This directory has a separate README.
+
+- **SV visualization / Tandem Repeat Scoring** [latest](https://github.com/calico/borzoi/tree/main/tutorials/latest/analyze_sv) <br/>
+
 ### Example Notebooks
 The following notebooks contain example code for predicting and interpreting genetic variants.
 
