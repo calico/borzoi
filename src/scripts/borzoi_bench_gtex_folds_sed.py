@@ -114,6 +114,12 @@ def main():
         default=False,
         action='store_true',
     )
+    sed_options.add_option(
+        "--no_unclip",
+        dest="no_unclip",
+        default=False,
+        action="store_true",
+    )
     parser.add_option_group(sed_options)
 
     # cross-fold
@@ -159,7 +165,7 @@ def main():
     fold_options.add_option(
         '--susie',
         dest='susie_dir',
-        default='/home/drk/seqnn/data/gtex_fine/tissues_susie',
+        default=None,
     )
     fold_options.add_option(
         '--name',
@@ -381,39 +387,40 @@ def main():
     ################################################################
     # coefficient analysis
 
-    cmd_base = 'borzoi_gtex_coef_sed.py -g %s --susie %s' % (options.gtex_vcf_dir, options.susie_dir)
+    if options.susie_dir is not None :
+        cmd_base = 'borzoi_gtex_coef_sed.py -g %s --susie %s' % (options.gtex_vcf_dir, options.susie_dir)
 
-    jobs = []
-    for ci in range(options.crosses):
-        for fi in fold_index:
-            it_dir = '%s/f%dc%d' % (exp_dir, fi, ci)
-            it_out_dir = '%s/%s' % (it_dir, gtex_out_dir)
-            
-            for sed_stat in sed_stats:
-                coef_out_dir = f'{it_out_dir}/coef-{sed_stat}'
-                
-                if not os.path.isfile('%s/metrics.tsv' % coef_out_dir):
-                    cmd_coef = f'{cmd_base} -o {coef_out_dir} -s {sed_stat} {it_out_dir}'
-                    j = slurm.Job(cmd_coef, 'coef',
-                                f'{coef_out_dir}.out', f'{coef_out_dir}.err',
-                                queue='standard', cpu=2,
-                                mem=30000, time='12:0:0')
-                    jobs.append(j)
+        jobs = []
+        for ci in range(options.crosses):
+            for fi in fold_index:
+                it_dir = '%s/f%dc%d' % (exp_dir, fi, ci)
+                it_out_dir = '%s/%s' % (it_dir, gtex_out_dir)
 
-    # ensemble
-    it_out_dir = f'{exp_dir}/ensemble/{gtex_out_dir}'
-    for sed_stat in sed_stats:
-        coef_out_dir = f'{it_out_dir}/coef-{sed_stat}'
-        
-        if not os.path.isfile('%s/metrics.tsv' % coef_out_dir):
-            cmd_coef = f'{cmd_base} -o {coef_out_dir} -s {sed_stat} {it_out_dir}'
-            j = slurm.Job(cmd_coef, 'coef',
-                        f'{coef_out_dir}.out', f'{coef_out_dir}.err',
-                        queue='standard', cpu=2,
-                        mem=30000, time='12:0:0')
-            jobs.append(j)
+                for sed_stat in sed_stats:
+                    coef_out_dir = f'{it_out_dir}/coef-{sed_stat}'
 
-    slurm.multi_run(jobs, verbose=True)
+                    if not os.path.isfile('%s/metrics.tsv' % coef_out_dir):
+                        cmd_coef = f'{cmd_base} -o {coef_out_dir} -s {sed_stat} {it_out_dir}'
+                        j = slurm.Job(cmd_coef, 'coef',
+                                    f'{coef_out_dir}.out', f'{coef_out_dir}.err',
+                                    queue='standard', cpu=2,
+                                    mem=30000, time='12:0:0')
+                        jobs.append(j)
+
+        # ensemble
+        it_out_dir = f'{exp_dir}/ensemble/{gtex_out_dir}'
+        for sed_stat in sed_stats:
+            coef_out_dir = f'{it_out_dir}/coef-{sed_stat}'
+
+            if not os.path.isfile('%s/metrics.tsv' % coef_out_dir):
+                cmd_coef = f'{cmd_base} -o {coef_out_dir} -s {sed_stat} {it_out_dir}'
+                j = slurm.Job(cmd_coef, 'coef',
+                            f'{coef_out_dir}.out', f'{coef_out_dir}.err',
+                            queue='standard', cpu=2,
+                            mem=30000, time='12:0:0')
+                jobs.append(j)
+
+        slurm.multi_run(jobs, verbose=True)
 
 
 def collect_scores(out_dir: str, num_jobs: int, h5f_name: str='sad.h5'):

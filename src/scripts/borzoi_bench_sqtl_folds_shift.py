@@ -1,11 +1,11 @@
 #!/usr/bin/env python
-# Copyright 2019 Calico LLC
+# Copyright 2023 Calico LLC
 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 
-#     https://www.apache.org/licenses/LICENSE-2.0
+#         https://www.apache.org/licenses/LICENSE-2.0
 
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -24,9 +24,9 @@ import slurm
 import util
 
 """
-borzoi_bench_sqtl_folds.py
+borzoi_bench_sqtl_folds_shift.py
 
-Benchmark Borzoi model replicates on GTEx sQTL classification task.
+Benchmark Borzoi model replicates on GTEx sQTL classification task (shifted window predictions).
 """
 
 ################################################################################
@@ -37,7 +37,7 @@ def main():
     parser = OptionParser(usage)
 
     # sed
-    sed_options = OptionGroup(parser, "borzoi_sed.py options")
+    sed_options = OptionGroup(parser, "borzoi_sed_shift.py options")
     sed_options.add_option(
         "-f",
         dest="genome_fasta",
@@ -248,7 +248,7 @@ def main():
             if options.data_head is not None:
                 model_file = "%s/train/model%d_best.h5" % (it_dir, options.data_head)
 
-            cmd_fold = "%s time borzoi_sed.py %s %s" % (
+            cmd_fold = "%s time borzoi_sed_shift.py %s %s" % (
                 cmd_base,
                 params_file,
                 model_file,
