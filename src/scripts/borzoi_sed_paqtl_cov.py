@@ -118,6 +118,13 @@ def main():
         help="Comma-separated list of stats to save. [Default: %default]",
     )
     parser.add_option(
+        "--utr3",
+        dest="utr3",
+        default=False,
+        action="store_true",
+        help="Only aggregate coverage over sites in the 3-prime UTR. [Default: %default]"
+    )
+    parser.add_option(
         "-t",
         dest="targets_file",
         default=None,
@@ -254,36 +261,42 @@ def main():
 
     apa_df = pd.read_csv(options.apa_file, sep="\t", compression="gzip")
 
-    # filter for 3' UTR polyA sites only
-    apa_df = apa_df.query("site_type == '3\\' most exon'").copy().reset_index(drop=True)
+    # optionally filter for 3' UTR polyA sites only
+    if options.utr3 :
+        apa_df = apa_df.query("site_type == '3\\' most exon'").copy().reset_index(drop=True)
+    else :
+        apa_df = apa_df.query("site_type == '3\\' most exon' or site_type == 'Intron'").copy().reset_index(drop=True)
 
-    # Remove non-contiguos sites, starting from distal-most site
+    # for 3' utr: remove non-contiguos sites, starting from distal-most site
+    if options.utr3 :
+        apa_df = (
+            apa_df.sort_values(by=["site_num"], ascending=False)
+            .copy()
+            .reset_index(drop=True)
+        )
 
-    apa_df = (
-        apa_df.sort_values(by=["site_num"], ascending=False)
-        .copy()
-        .reset_index(drop=True)
-    )
+        gene_dict = {}
+        keep_index = []
+        for i, [_, row] in enumerate(apa_df.iterrows()):
 
-    gene_dict = {}
-    keep_index = []
-    for i, [_, row] in enumerate(apa_df.iterrows()):
-
-        if row["gene"] not in gene_dict:
-            gene_dict[row["gene"]] = row["site_num"]
-            keep_index.append(i)
-        else:
-            if row["site_num"] == gene_dict[row["gene"]] - 1:
+            if row["gene"] not in gene_dict:
                 gene_dict[row["gene"]] = row["site_num"]
                 keep_index.append(i)
+            else:
+                if row["site_num"] == gene_dict[row["gene"]] - 1:
+                    gene_dict[row["gene"]] = row["site_num"]
+                    keep_index.append(i)
 
-    apa_df = apa_df.iloc[keep_index].copy().reset_index(drop=True)
+        apa_df = apa_df.iloc[keep_index].copy().reset_index(drop=True)
 
     apa_df = (
         apa_df.sort_values(by=["gene", "site_num"], ascending=True)
         .copy()
         .reset_index(drop=True)
     )
+  
+    print("n intron sites = " + str(len(apa_df.query("site_type == 'Intron'"))), flush=True)
+    print("n utr3 sites   = " + str(len(apa_df.query("site_type == '3\\' most exon'"))), flush=True)
 
     apa_df["start_hg38"] = apa_df["position_hg38"]
     apa_df["end_hg38"] = apa_df["position_hg38"] + 1
@@ -651,6 +664,55 @@ def map_snpseq_apa(
                     snpseq_apa_slice[si]["bins"].setdefault(pas_id + "_up", []).extend(
                         range(bin_start, bin_end)
                     )
+            
+            elif "COVRWIDE" in sed_stats:
+                # upstream coverage (before PAS); wider
+                bin_start = None
+                bin_end = None
+                if pas_strand == "+":
+                    bin_end = int(np.round(pas_seq_start / model_stride)) + 1
+                    bin_start = bin_end - 8 - 1
+                else:
+                    bin_start = int(np.round(pas_seq_end / model_stride))
+                    bin_end = bin_start + 8 + 1
+
+                # clip right boundaries
+                bin_max = int(seq_len / model_stride)
+                bin_start = max(min(bin_start, bin_max), 0)
+                bin_end = max(min(bin_end, bin_max), 0)
+
+                if bin_end - bin_start > 0:
+                    # save gene bin positions
+                    snpseq_gene_slice[si]["bins"].setdefault(gene_id, []).append(
+                        [bin_start, bin_end]
+                    )
+                    snpseq_apa_slice[si]["bins"].setdefault(pas_id + "_up", []).extend(
+                        range(bin_start, bin_end)
+                    )
+
+                # downstream coverage (after PAS)
+                bin_start = None
+                bin_end = None
+                if pas_strand == "+":
+                    bin_start = int(np.round(pas_seq_end / model_stride))
+                    bin_end = bin_start + 8 + 1
+                else:
+                    bin_end = int(np.round(pas_seq_start / model_stride)) + 1
+                    bin_start = bin_end - 8 - 1
+
+                # clip right boundaries
+                bin_max = int(seq_len / model_stride)
+                bin_start = max(min(bin_start, bin_max), 0)
+                bin_end = max(min(bin_end, bin_max), 0)
+
+                if bin_end - bin_start > 0:
+                    # save gene bin positions
+                    snpseq_gene_slice[si]["bins"].setdefault(gene_id, []).append(
+                        [bin_start, bin_end]
+                    )
+                    snpseq_apa_slice[si]["bins"].setdefault(pas_id + "_dn", []).extend(
+                        range(bin_start, bin_end)
+                    )
 
             else:  # default (COVR)
                 # upstream coverage (before PAS)
@@ -849,7 +911,7 @@ def write_snp(ref_preds, alt_preds, sed_out, xi, sed_stats, cov_pseudo, cov_min)
     alt_preds_sum = alt_preds.sum(axis=0)
 
     # compare reference to alternative via mean downstream/upstream coverage ratios
-    if "COVR" in sed_stats:
+    if "COVR" in sed_stats or "COVRWIDE" in sed_stats:
 
         cov_vec = (alt_preds + cov_pseudo) / (ref_preds + cov_pseudo)
 
@@ -875,10 +937,13 @@ def write_snp(ref_preds, alt_preds, sed_out, xi, sed_stats, cov_pseudo, cov_min)
             if np.mean(scores) > np.mean(max_scores):
                 max_scores = scores
 
-        sed_out["COVR"][xi] = max_scores.astype("float16")
+        if "COVR" in sed_stats:
+            sed_out["COVR"][xi] = max_scores.astype("float16")
+        if "COVRWIDE" in sed_stats:
+            sed_out["COVRWIDE"][xi] = max_scores.astype("float16")
 
     # compare reference to alternative via mean downstream/upstream coverage ratios (signed)
-    if "SCOVR" in sed_stats:
+    if "SCOVR" in sed_stats or "SCOVRWIDE" in sed_stats:
 
         cov_vec = (alt_preds + cov_pseudo) / (ref_preds + cov_pseudo)
 
@@ -907,7 +972,10 @@ def write_snp(ref_preds, alt_preds, sed_out, xi, sed_stats, cov_pseudo, cov_min)
                 max_scores = scores
                 max_scores_s = scores_s
 
-        sed_out["SCOVR"][xi] = max_scores_s.astype("float16")
+        if "SCOVR" in sed_stats:
+            sed_out["SCOVR"][xi] = max_scores_s.astype("float16")
+        if "SCOVRWIDE" in sed_stats:
+            sed_out["SCOVRWIDE"][xi] = max_scores_s.astype("float16")
 
     # compare reference to alternative via mean downstream/upstream proportion ratios (PAS-seq)
     if "PROP3" in sed_stats or "COVR3" in sed_stats or "COVR3WIDE" in sed_stats:

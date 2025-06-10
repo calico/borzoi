@@ -33,10 +33,10 @@ from baskerville import seqnn
 from baskerville import vcf as bvcf
 
 """
-borzoi_sed.py
+borzoi_sed_shift.py
 
 Compute SNP Expression Difference (SED) scores for SNPs in a VCF file,
-relative to gene exons in a GTF file.
+relative to gene exons in a GTF file (shifted predictions to increase output window).
 """
 
 ################################################################################
@@ -244,7 +244,7 @@ def main():
 
     # map SNP sequences to gene positions
     snpseq_gene_slice = map_snpseq_genes(
-        snps, out_seq_len, transcriptome, model_stride, options.span
+        snps, out_seq_len * 3, transcriptome, model_stride, options.span
     )
 
     # remove SNPs w/o genes
@@ -275,16 +275,20 @@ def main():
     # for each SNP sequence
     for si, snp in tqdm(enumerate(snps), total=len(snps)):
         # get SNP sequences
-        snp_1hot_list = bvcf.snp_seq1(snp, seq_len, genome_open)
+        snp_1hot_list = bvcf.snp_seq1(snp, seq_len + 2 * out_seq_len, genome_open)
         snps_1hot = np.array(snp_1hot_list)
 
         # get predictions
-        if params_train["batch_size"] == 1:
-            ref_preds = seqnn_model(snps_1hot[:1])[0]
-            alt_preds = seqnn_model(snps_1hot[1:])[0]
-        else:
-            snp_preds = seqnn_model(snps_1hot)
-            ref_preds, alt_preds = snp_preds[0], snp_preds[1]
+        ref_preds_l = seqnn_model(snps_1hot[:1, 0 * out_seq_len:0 * out_seq_len + seq_len, :])[0]
+        ref_preds_m = seqnn_model(snps_1hot[:1, 1 * out_seq_len:1 * out_seq_len + seq_len, :])[0]
+        ref_preds_r = seqnn_model(snps_1hot[:1, 2 * out_seq_len:2 * out_seq_len + seq_len, :])[0]
+
+        alt_preds_l = seqnn_model(snps_1hot[1:, 0 * out_seq_len:0 * out_seq_len + seq_len, :])[0]
+        alt_preds_m = seqnn_model(snps_1hot[1:, 1 * out_seq_len:1 * out_seq_len + seq_len, :])[0]
+        alt_preds_r = seqnn_model(snps_1hot[1:, 2 * out_seq_len:2 * out_seq_len + seq_len, :])[0]
+        
+        ref_preds = np.concatenate([ref_preds_l, ref_preds_m, ref_preds_r], axis=0)
+        alt_preds = np.concatenate([alt_preds_l, alt_preds_m, alt_preds_r], axis=0)
 
         # untransform predictions
         if options.targets_file is not None:

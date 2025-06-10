@@ -26,6 +26,7 @@ import h5py
 import numpy as np
 import pandas as pd
 import pysam
+import pybedtools
 import tensorflow as tf
 
 from baskerville.dataset import targets_prep_strand
@@ -34,9 +35,9 @@ from baskerville import gene as bgene
 from baskerville import seqnn
 
 """
-borzoi_satg_gene.py
+borzoi_satg_gene_smooth.py
 
-Perform a gradient saliency analysis for genes specified in a GTF file.
+Perform a smoothed gradient saliency analysis for genes specified in a GTF file (integrating over mutated sequence samples).
 """
 
 ################################################################################
@@ -50,6 +51,12 @@ def main():
         dest="genome_fasta",
         default="%s/assembly/ucsc/hg38.fa" % os.environ.get('BORZOI_HG38', 'hg38'),
         help="Genome FASTA for sequences [Default: %default]",
+    )
+    parser.add_option(
+        "--full_gtf",
+        dest="full_gtf",
+        default="%s/genes/gencode41/gencode41_basic_nort_protein.gtf" % os.environ.get('BORZOI_HG38', 'hg38'),
+        help="Full genes gtf file [Default: %default]",
     )
     parser.add_option(
         "-o",
@@ -98,6 +105,55 @@ def main():
         default=False,
         action="store_true",
         help="Aggregate entire gene span [Default: %default]",
+    )
+    parser.add_option(
+        "--samples",
+        dest="n_samples",
+        default=5,
+        type="int",
+        help="Number of smoothgrad samples [Default: %default]",
+    )
+    parser.add_option(
+        "--sampleprob",
+        dest="sample_prob",
+        default=0.90,
+        type="float",
+        help="Probability of not mutating a position in smoothgrad [Default: %default]",
+    )
+    parser.add_option(
+        "--sampleval",
+        dest="sample_value",
+        default=1.0,
+        type="float",
+        help="New one-hot value for a corrupted position in smoothgrad [Default: %default]",
+    )
+    parser.add_option(
+        "--sampleseed",
+        dest="sample_seed",
+        default=42,
+        type="int",
+        help="Smoothgrad random seed [Default: %default]",
+    )
+    parser.add_option(
+        "--restrict_exons",
+        dest="restrict_exons",
+        default=False,
+        action="store_true",
+        help="Do not mutate exons of target gene [Default: %default]",
+    )
+    parser.add_option(
+        "--restrict_other_exons",
+        dest="restrict_other_exons",
+        default=False,
+        action="store_true",
+        help="Do not mutate exons of other genes [Default: %default]",
+    )
+    parser.add_option(
+        "--exon_padding_bp",
+        dest="exon_padding_bp",
+        default=48,
+        type="int",
+        help="Do not mutate within this radius of an exon junction [Default: %default]",
     )
     parser.add_option(
         "--clip_soft",
@@ -265,6 +321,10 @@ def main():
 
     # parse GTF
     transcriptome = bgene.Transcriptome(genes_gtf_file)
+    full_transcriptome = bgene.Transcriptome(options.full_gtf)
+  
+    #Get gene span bedtool (of full transcriptome)
+    bedt_span = full_transcriptome.bedtool_span()
 
     # order valid genes
     genome_open = pysam.Fastafile(options.genome_fasta)
@@ -319,6 +379,10 @@ def main():
             if options.get_preds:
                 scores_h5.create_dataset(
                     "preds", dtype="float32", shape=(num_genes, num_targets)
+                )
+            if options.restrict_exons or options.restrict_other_exons :
+                scores_h5.create_dataset(
+                    "masks", dtype="bool", shape=(num_genes, seq_len)
                 )
             scores_h5.create_dataset("gene", data=np.array(gene_list, dtype="S"))
             scores_h5.create_dataset("chr", data=np.array(genes_chr, dtype="S"))
@@ -517,6 +581,10 @@ def main():
                     seq_1hots = []
                     gene_slices = []
                     gene_targets = []
+        
+                    sample_masks = None
+                    if options.restrict_exons or options.restrict_other_exons :
+                        sample_masks = []
 
                     for gi, gene_id in enumerate(gene_list):
 
@@ -564,10 +632,45 @@ def main():
 
                         gene_target = np.array(targets_df.index[gene_strand_mask].values)
 
+                        if options.restrict_exons or options.restrict_other_exons :
+
+                            sample_mask = np.ones(seq_len, dtype=bool)
+
+                            # restrict exon-covered bases of target gene
+                            if options.restrict_exons :
+
+                                # determine exon-overlapping positions
+                                this_slice = gene.output_slice(genes_start[gi], seq_len, model_stride, options.span)
+
+                                if rev_comp:
+                                    this_slice = seq_len // model_stride - this_slice - 1
+
+                                for bin_ix in this_slice.tolist() :
+                                    sample_mask[bin_ix * model_stride - options.exon_padding_bp:(bin_ix+1) * model_stride + options.exon_padding_bp + 1] = False
+
+                            # restrict exon-covered bases of other genes
+                            if options.restrict_other_exons :
+                                # get sequence bedtool
+                                seq_bedt = pybedtools.BedTool('%s %d %d' % (genes_chr[gi], max(genes_start[gi], 0), genes_end[gi]), from_string=True)
+
+                                gene_ids = sorted(list(set([overlap[3] for overlap in bedt_span.intersect(seq_bedt, wo=True) if gene_id not in overlap[3]])))
+                                for other_gene_id in gene_ids :
+
+                                    other_slice = full_transcriptome.genes[other_gene_id].output_slice(genes_start[gi], seq_len, model_stride, options.span)
+
+                                    if rev_comp:
+                                        other_slice = seq_len // model_stride - other_slice - 1
+
+                                    for bin_ix in other_slice.tolist() :
+                                        sample_mask[bin_ix * model_stride - options.exon_padding_bp:(bin_ix+1) * model_stride + options.exon_padding_bp + 1] = False
+
                         # accumulate data tensors
                         seq_1hots.append(seq_1hot[None, ...])
                         gene_slices.append(gene_slice[None, ...])
                         gene_targets.append(gene_target[None, ...])
+          
+                        if options.restrict_exons or options.restrict_other_exons :
+                            sample_masks.append(sample_mask[None, ...])
 
                         if gi == len(gene_list) - 1 or len(seq_1hots) >= buffer_size:
 
@@ -594,15 +697,19 @@ def main():
 
                             # concat gene-specific targets
                             gene_targets = np.concatenate(gene_targets, axis=0)
+            
+                            # concat gene-specific sample mask (for smooth grad)
+                            if options.restrict_exons or options.restrict_other_exons :
+                                sample_masks = np.concatenate(sample_masks, axis=0)
 
                             # batch call gradient computation
-                            grads = seqnn_model.gradients(
+                            grads = seqnn_model.smooth_gradients(
                                 seq_1hots,
                                 head_i=0,
                                 target_slice=gene_targets,
                                 pos_slice=gene_slices,
                                 pos_mask=gene_masks,
-                                chunk_size=buffer_size,
+                                chunk_size=buffer_size // options.n_samples,
                                 batch_size=1,
                                 track_scale=options.track_scale,
                                 track_transform=options.track_transform,
@@ -615,6 +722,11 @@ def main():
                                 use_logodds=False,
                                 subtract_avg=True,
                                 input_gate=False,
+                                n_samples=options.n_samples,
+                                sample_prob=options.sample_prob,
+                                sample_mask=sample_masks,
+                                sample_value=options.sample_value,
+                                sample_seed=options.sample_seed,
                                 dtype="float16",
                             )
 
@@ -630,11 +742,16 @@ def main():
 
                                 # write to HDF5
                                 scores_h5["grads"][h5_gi] += grad
+              
+                                if not rev_comp and shift == 0 and (options.restrict_exons or options.restrict_other_exons) :
+                                    scores_h5['masks'][h5_gi, :] = sample_masks[gii]
 
                             # clear sequence buffer
                             seq_1hots = []
                             gene_slices = []
                             gene_targets = []
+                            if options.restrict_exons or options.restrict_other_exons :
+                                sample_masks = []
 
                             # collect garbage
                             gc.collect()

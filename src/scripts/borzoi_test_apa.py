@@ -85,6 +85,18 @@ def main():
         help="TFR pattern string appended to data_dir/tfrecords for subsetting [Default: %default]",
     )
     parser.add_option(
+        '--stat',
+        dest='cov_stat',
+        default='COVR',
+        help='Coverage statistic to aggregate. [Default: %default]'
+    )
+    parser.add_option(
+        '--utr3',
+        dest='utr3',
+        default=False, action='store_true',
+        help='Only aggregate coverage over sites in the 3-prime UTR. [Default: %default]'
+    )
+    parser.add_option(
         "-u",
         dest="untransform_old",
         default=False,
@@ -184,8 +196,11 @@ def main():
 
     apa_df = pd.read_csv(apa_file, sep="\t", compression="gzip")
 
-    # filter for 3' UTR polyA sites only
-    apa_df = apa_df.query("site_type == '3\\' most exon'").copy().reset_index(drop=True)
+    # optionally filter for 3' UTR polyA sites only
+    if options.utr3 :
+        apa_df = apa_df.query("site_type == '3\\' most exon'").copy().reset_index(drop=True)
+    else :
+        apa_df = apa_df.query("site_type == '3\\' most exon' or site_type == 'Intron'").copy().reset_index(drop=True)
 
     apa_df["start_hg38"] = apa_df["position_hg38"]
     apa_df["end_hg38"] = apa_df["position_hg38"] + 1
@@ -251,15 +266,44 @@ def main():
                 cut_seq_mode = max(0, cut_mode - seq_start)
 
                 # requires >50% overlap
-
+        
                 bin_start = None
                 bin_end = None
-                if pas_strand == "+":
-                    bin_end = int(np.round(pas_seq_start / pool_width)) + 1
-                    bin_start = bin_end - 3 - 1
-                else:
-                    bin_start = int(np.round(pas_seq_end / pool_width))
-                    bin_end = bin_start + 3 + 1
+
+                # aggregate RNA-seq coverage
+                if options.cov_stat == 'COVR' :
+                    if pas_strand == '+' :
+                        bin_end = int(np.round(pas_seq_start / pool_width)) + 1
+                        if pool_width == 32 :
+                            bin_start = bin_end - 3 - 1
+                        else : #16
+                            bin_start = bin_end - 8 - 1
+                    else :
+                        bin_start = int(np.round(pas_seq_end / pool_width))
+                        if pool_width == 32 :
+                            bin_end = bin_start + 3 + 1
+                        else : #16
+                            bin_end = bin_start + 8 + 1
+                elif options.cov_stat == 'COVR3' :
+                    if pas_strand == '+' :
+                        bin_end = int(np.round(pas_seq_start / pool_width)) + 1
+                        if pool_width == 32 :
+                            bin_start = bin_end - 7 - 1
+                        else : #16
+                            bin_start = bin_end - 14 - 1
+                    else :
+                        bin_start = int(np.round(pas_seq_end / pool_width))
+                        if pool_width == 32 :
+                            bin_end = bin_start + 7 + 1
+                        else : #16
+                            bin_end = bin_start + 14 + 1
+                elif options.cov_stat == 'PROP3' :
+                    if pool_width == 32 :
+                        bin_end = int(np.round(pas_seq_start / pool_width)) + 3
+                        bin_start = bin_end - 5
+                    else : #16
+                        bin_end = int(np.round(pas_seq_start / pool_width)) + 5
+                        bin_start = bin_end - 9
 
                 # predict
                 if yh is None:

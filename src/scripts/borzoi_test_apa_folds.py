@@ -109,6 +109,30 @@ def main():
         help="File specifying target indexes and labels in table format",
     )
     parser.add_option(
+        '--stat',
+        dest='cov_stat',
+        default='COVR',
+        help='Coverage statistic to aggregate. [Default: %default]'
+    )
+    parser.add_option(
+        '--utr3',
+        dest='utr3',
+        default=False, action='store_true',
+        help='Only aggregate coverage over sites in the 3-prime UTR. [Default: %default]'
+    )
+    parser.add_option(
+        '--split',
+        dest='split_label',
+        default='test',
+        help='Dataset split label for eg TFR pattern [Default: %default]'
+    )
+    parser.add_option(
+        '--out_suffix',
+        dest='out_suffix',
+        default='',
+        help='Output directory suffix [Default: %default]'
+    )
+    parser.add_option(
         "-u",
         dest="untransform_old",
         default=False,
@@ -164,13 +188,19 @@ def main():
     for ci in range(options.crosses):
         for fi in fold_index:
             it_dir = "%s/f%dc%d" % (options.exp_dir, fi, ci)
+            
+            out_dir_name = options.split_label + 'e'
+            
+            output_suffix = ''
+            if options.out_suffix is not None and options.out_suffix != '' :
+                output_suffix = options.out_suffix
 
             if options.dataset_i is None:
-                out_dir = "%s/teste" % it_dir
-                model_file = "%s/train/model_best.h5" % it_dir
+                out_dir = '%s/%s%s' % (it_dir, out_dir_name, output_suffix)
+                model_file = '%s/train/model_best.h5' % it_dir
             else:
-                out_dir = "%s/teste%d" % (it_dir, options.dataset_i)
-                model_file = "%s/train/model%d_best.h5" % (it_dir, options.dataset_i)
+                out_dir = '%s/%s%d%s' % (it_dir, out_dir_name, options.dataset_i, output_suffix)
+                model_file = '%s/train/model%d_best.h5' % (it_dir, options.dataset_i)
 
             # check if done
             acc_file = "%s/apa_preds.tsv.gz" % out_dir
@@ -190,6 +220,11 @@ def main():
                     cmd += " --shifts %s" % options.shifts
                 if options.targets_file is not None:
                     cmd += " -t %s" % options.targets_file
+                cmd += ' --stat %s' % options.cov_stat
+                if options.utr3:
+                    cmd += ' --utr3'
+                if options.split_label is not None:
+                    cmd += ' --split %s' % options.split_label
                 if options.untransform_old:
                     cmd += " -u"
                 cmd += " %s" % params_file

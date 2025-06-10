@@ -70,6 +70,13 @@ def main():
         help="Number of processes, passed by multi script",
     )
     sed_options.add_option(
+        "--paext",
+        dest="pas_ext",
+        default=50,
+        type="float",
+        help="Extension in bp past gene span annotation [Default: %default]"
+    )
+    sed_options.add_option(
         "--pseudo",
         dest="cov_pseudo",
         default=50,
@@ -102,6 +109,13 @@ def main():
         dest="sed_stats",
         default="REF,ALT",
         help="Comma-separated list of stats to save. [Default: %default]",
+    )
+    sed_options.add_option(
+        '--utr3',
+        dest='utr3',
+        default=False,
+        action='store_true',
+        help='Only aggregate coverage over sites in the 3-prime UTR. [Default: %default]'
     )
     sed_options.add_option(
         "-t",
