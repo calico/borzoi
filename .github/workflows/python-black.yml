@@ -12,7 +12,7 @@ jobs:
 
     steps:
       - name: Checkout base repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v2
