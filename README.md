@@ -16,10 +16,10 @@ The repository contains example usage code (including jupyter notebooks for pred
 Contact *drk (at) @calicolabs.com* or *jlinder (at) @calicolabs.com* for questions about the model or data.
 
 ## Installation
-Borzoi depends on the [baskerville repository](https://github.com/calico/baskerville.git), which can be installed by issuing the following commands:
+Borzoi depends on the [baskerville-tf repository](https://github.com/calico/baskerville-tf.git), which can be installed by issuing the following commands:
 ```sh
-git clone https://github.com/calico/baskerville.git
-cd baskerville
+git clone https://github.com/calico/baskerville-tf.git
+cd baskerville-tf
 pip install -e .
 ```
 
@@ -27,13 +27,6 @@ Next, install the [borzoi repository](https://github.com/calico/borzoi.git) by i
 ```sh
 git clone https://github.com/calico/borzoi.git
 cd borzoi
-pip install -e .
-```
-
-To train new models, the [westminster repository](https://github.com/calico/westminster.git) is also required and can be installed with these commands:
-```sh
-git clone https://github.com/calico/westminster.git
-cd westminster
 pip install -e .
 ```
 
@@ -45,14 +38,10 @@ These repositories further depend on a number of python packages (which are auto
 A new conda environment can be created with `conda create -n borzoi_py310 python=3.10`.<br/>
 Some of the scripts in this repository start multi-process jobs and require [slurm](https://slurm.schedmd.com/).
 
-Finally, the code base relies on a number of environment variables. For convenience, these can be configured in the active conda environment with the 'env_vars.sh' script. First, open up 'env_vars.sh' in each repository folder and change the few lines of code at the top to your local paths. Then, issue these commands:
+Finally, the code base relies on a number of environment variables. For convenience, these can be configured in the active conda environment with the 'env_vars.sh' script. First, open up 'env_vars.sh' and change the few lines of code at the top to your local paths. Then, issue these commands:
 ```sh
 cd borzoi
 conda activate borzoi_py310
-./env_vars.sh
-cd ../baskerville
-./env_vars.sh
-cd ../westminster
 ./env_vars.sh
 ```
 
@@ -62,21 +51,16 @@ export BORZOI_DIR=/home/<user_path>/borzoi
 export PATH=$BORZOI_DIR/src/scripts:$PATH
 export PYTHONPATH=$BORZOI_DIR/src/scripts:$PYTHONPATH
 
-export BASKERVILLE_DIR=/home/<user_path>/baskerville
+export BASKERVILLE_DIR=/home/<user_path>/baskerville-tf
 export PATH=$BASKERVILLE_DIR/src/baskerville/scripts:$PATH
 export PYTHONPATH=$BASKERVILLE_DIR/src/baskerville/scripts:$PYTHONPATH
-
-export WESTMINSTER_DIR=/home/<user_path>/westminster
-export PATH=$WESTMINSTER_DIR/src/westminster/scripts:$PATH
-export PYTHONPATH=$WESTMINSTER_DIR/src/westminster/scripts:$PYTHONPATH
 
 export BORZOI_CONDA=/home/<user>/anaconda3/etc/profile.d/conda.sh
 export BORZOI_HG38=$BORZOI_DIR/examples/hg38
 export BORZOI_MM10=$BORZOI_DIR/examples/mm10
-export BASKERVILLE_CONDA=$BORZOI_CONDA
 ```
 
-*Note*: The *baskerville* and *westminster* variables are only required for data processing and model training.
+*Note*: The *baskerville-tf* variables are only required for data processing and model training.
 
 ### Model Availability
 The model weights can be downloaded as .h5 files from the URLs below. We trained a total of 4 model replicates with identical train, validation and test splits (test = fold3, validation = fold4 from [sequences_human.bed.gz](https://github.com/calico/borzoi/blob/main/data/sequences_human.bed.gz)).
