@@ -8,14 +8,14 @@ Contact *drk (at) @calicolabs.com* or *anya (at) @calicolabs.com* for questions.
 
 ## Indel / structural variant effect visualization
 
-Please follow the installation steps on the main page. This code depends on the [baskerville](https://github.com/calico/baskerville.git) library and on plotly.
+Please follow the installation steps on the main page. This code depends on the [baskerville-tf](https://github.com/calico/baskerville-tf.git) library and on plotly.
 Install plotly into the working environment:
 
 ```sh
 pip install plotly
 ```
 
-After you've installed baskerville, download the dependencies for SV visualization example, and run the example script:
+After you've installed baskerville-tf, download the dependencies for SV visualization example, and run the example script:
 
 ```sh
 bash download_dependencies_SV.sh
